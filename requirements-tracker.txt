@@ -1,0 +1,5 @@
+numpy>=2.0
+opencv-contrib-python>=4.6
+websockets>=12
+whircam>=0.1.0
+mediapipe>=1.1

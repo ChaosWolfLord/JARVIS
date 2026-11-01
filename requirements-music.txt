@@ -1,0 +1,3 @@
+# Optional: music on your Google Home speakers from YouTube Music (see README, "Music")
+pychromecast>=14
+ytmusicapi>=1.8

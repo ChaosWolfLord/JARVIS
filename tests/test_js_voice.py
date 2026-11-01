@@ -1,0 +1,27 @@
+"""Runs the Node checks of the page's voice logic (talking over JARVIS), if Node is installed."""
+import shutil
+import subprocess
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+@unittest.skipUnless(shutil.which("node"), "Node isn't installed, so the browser-side voice checks can't run")
+class VoiceInterrupt(unittest.TestCase):
+    def test_talking_over_jarvis(self):
+        run = subprocess.run(["node", "tests/js/voice_interrupt.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)
+
+
+@unittest.skipUnless(shutil.which("node"), "Node isn't installed, so the browser-side checks can't run")
+class MenuFit(unittest.TestCase):
+    def test_menus_never_run_off_the_top_of_the_screen(self):
+        run = subprocess.run(["node", "tests/js/menufit.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

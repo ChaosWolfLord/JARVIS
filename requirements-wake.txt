@@ -1,0 +1,3 @@
+# Optional: the offline wake word (see README, "Voice settings and the offline wake word")
+vosk>=0.3.45
+sounddevice>=0.4.6
