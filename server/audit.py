@@ -65,6 +65,8 @@ def describe(name: str, args: dict) -> str:
         return " ".join(str(v) for k, v in args.items() if k in ("action", "query", "device", "volume", "direction") and v not in (None, ""))[:100]
     if name in ("apps", "app_close"):
         return " ".join(str(v) for k, v in args.items() if k in ("action", "name", "pid") and v not in (None, ""))[:100]
+    if name == "reminder":
+        return " ".join(str(v) for k, v in args.items() if k in ("action", "text", "at", "minutes") and v not in (None, ""))[:100]
     if name == "lights":
         return " ".join(str(v) for k, v in args.items() if k in ("action", "target", "power", "brightness", "color", "kelvin", "scene") and v not in (None, ""))[:100]
     if name == "system_fix":

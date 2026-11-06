@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import agent, audit, claude_usage, diagnostics, fixes, guard, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, privacy, runner, store, wakeword
+from . import agent, audit, claude_usage, diagnostics, fixes, guard, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, privacy, reminders as reminders_mod, runner, store, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -28,18 +28,51 @@ async def lifespan(_app):
     if os.getenv("JARVIS_WAKEWORD") == "1":
         start_wake()
     if os.getenv("JARVIS_DIAGNOSTICS", "1") != "0":
-        monitor.notify = lambda event: asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop)
+        monitor.notify = lambda event: on_monitor_event(event, loop)
         monitor.start()
     if os.getenv("JARVIS_LIGHTS", "1") != "0":
         threading.Thread(target=find_lights, daemon=True, name="lights").start()      # a scan takes a few seconds: don't hold up start-up
     if os.getenv("JARVIS_MUSIC", "1") != "0":
         threading.Thread(target=find_speakers, daemon=True, name="speakers").start()
+    if os.getenv("JARVIS_PHONE", "1") != "0":
+        phone_service.start(
+            agent.chat_turn,
+            lambda event: asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop),
+            privacy.locked,
+            on_events_connect=lambda: courier.deliver_due(),      # a phone just opened its page: hand over reminders that were waiting for it
+            port=int(os.getenv("JARVIS_PHONE_PORT", "8443")),
+            tls=os.getenv("JARVIS_PHONE_TLS", "1") != "0",
+        )
+    reminder_stop.clear()
+    threading.Thread(target=reminder_loop, daemon=True, name="reminders").start()
     yield
+    reminder_stop.set()
+    phone_service.stop()
     monitor.stop()
     music_mod.instance.backend.stop()
     if wake.service:
         wake.service.stop()
     mcp_client.manager.stop()
+
+
+phone_service = phone_mod.PhoneService()
+reminder_stop = threading.Event()
+
+
+def reminder_loop() -> None:
+    """Every few seconds, hands any due reminder to the open pages and the phone."""
+    while not reminder_stop.wait(5):
+        try:
+            courier.deliver_due()
+        except Exception:  # noqa: BLE001 - a hiccup must not stop the reminders for good
+            pass
+
+
+def on_monitor_event(event: dict, loop) -> None:
+    """The health monitor found (or cleared) a problem: every page hears it, and a new one also goes to the phone."""
+    asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop)
+    if event.get("type") == "alert" and event.get("state") == "new" and not privacy.locked():
+        phone_service.publish({"type": "push", "title": str(event.get("title", "Alert"))[:60], "text": str(event.get("text", ""))[:200]})
 
 
 class _Wake:
@@ -169,6 +202,12 @@ def status():
 def get_news():
     """Headlines for the ticker (public RSS feeds, re-read at most every 15 minutes)."""
     return news_mod.instance.view()
+
+
+@app.get("/api/persona/showoff")
+def persona_showoff(on: bool = True):
+    """What JARVIS says when show-off mode is switched on or off, in its current personality."""
+    return {"text": persona.line("showoff_on" if on else "showoff_off")}
 
 
 @app.get("/api/persona/boot")
@@ -311,6 +350,8 @@ async def post_notify(req: Notice, x_jarvis_token: str | None = Header(default=N
         return {"ok": True, "sent": 0}
     event = notify_mod.compose(req.kind, req.project)
     await hub.send_all(hub.viewers, json.dumps({"type": "notify", **event}))
+    if not privacy.locked():
+        phone_service.publish({"type": "push", "title": event["title"], "text": event["text"]})
     audit.record("notify", f"claude {req.kind} {notify_mod.clean_project(req.project)}".strip(), "ok")
     return {"ok": True, "sent": len(hub.viewers)}
 
@@ -463,6 +504,52 @@ def claude_code_usage(measure: str = "all"):
     return claude_usage.summary(measure)
 
 
+@app.get("/api/phone")
+def phone_status():
+    """Is the phone door running, where is it, and which phones are paired (the status menu shows this)."""
+    return phone_service.status()
+
+
+@app.post("/api/phone/code")
+def phone_code():
+    """A new six-digit pairing code, shown on the PC screen only. The phone page asks for it once."""
+    if not phone_service.status()["running"]:
+        raise HTTPException(409, "The phone door isn't running" + (f": {phone_service.error}" if phone_service.error else "."))
+    audit.record("phone", "pairing code shown")
+    return phone_service.phones.new_code()
+
+
+class PhonePush(BaseModel):
+    title: str = Field(max_length=60)
+    text: str = Field(default="", max_length=200)
+
+
+@app.post("/api/phone/push")
+def phone_push(req: PhonePush):
+    """The page tells the phone about something that only the page knows (a timer ended). Nothing goes out while the privacy screen is up."""
+    if privacy.locked():
+        return {"sent": 0}
+    return {"sent": phone_service.publish({"type": "push", "title": req.title, "text": req.text})}
+
+
+@app.delete("/api/phone")
+def phone_forget():
+    """Un-pairs every phone: each has to be paired again with a new code."""
+    n = phone_service.phones.forget_all()
+    audit.record("phone", f"forgot {n} phone(s)")
+    return {"forgot": n}
+
+
+@app.get("/api/phone/qr.svg")
+def phone_qr():
+    """A QR code of the phone page's address, so the phone can open it with its camera."""
+    url = phone_service.status()["url"]
+    if not url:
+        raise HTTPException(409, "The phone door isn't running.")
+    from fastapi.responses import Response
+    return Response(phone_mod.qr_svg(url), media_type="image/svg+xml")
+
+
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     history = [h.model_dump() for h in req.history]
@@ -569,6 +656,17 @@ class PenHub:
 hub = PenHub()
 
 
+def _to_pages(event: dict) -> int:
+    """Sends an event to every open JARVIS page; returns how many pages there were."""
+    n = len(hub.viewers)
+    if n and wake.loop:
+        asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), wake.loop)
+    return n
+
+
+courier = reminders_mod.Courier(reminders_mod.reminders, _to_pages, lambda event: phone_service.publish(event), privacy.locked)
+
+
 @app.websocket("/ws/pen")
 async def pen_socket(ws: WebSocket, role: str = "view"):
     await ws.accept()
@@ -581,6 +679,7 @@ async def pen_socket(ws: WebSocket, role: str = "view"):
         await ws.send_text(json.dumps({"type": "tracker", "connected": bool(hub.trackers)}))
         # a page that just opened (or reconnected) learns which alerts are active, so it can add and clear its red notes
         await ws.send_text(json.dumps({"type": "alerts", "alerts": monitor.active_alerts()}))
+        threading.Timer(2.0, courier.deliver_due).start()       # reminders that came due while no page was open arrive now (marked late)
     try:
         while True:
             await hub.send_all(theirs, await ws.receive_text())

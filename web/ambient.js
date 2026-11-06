@@ -1,5 +1,5 @@
 // Ambient mode: when nobody has touched, spoken to or drawn on JARVIS for a while, the wall calms down. The dock
-// fades away, the drawing and border lights dim, widgets that aren't marked for it fade out, and the clock grows.
+// fades away, the drawing dims, the side lights fade, widgets that aren't marked for it fade out, and the clock grows.
 // The orb stays. Any touch, key, pen movement, spoken command or finished timer brings everything straight back.
 // (The first touch only wakes it: it doesn't also press whatever was underneath.)
 

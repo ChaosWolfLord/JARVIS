@@ -104,6 +104,16 @@ class Lines(unittest.TestCase):
             self.assertEqual(persona.music_reply({"action": "volume", "direction": "up"}), "Louder.")
             self.assertEqual(persona.music_reply({"action": "next"}), "Next song.")
 
+    def test_show_off_mode_has_lines_for_switching_on_and_off(self):
+        from server import main
+        with mock.patch.dict("os.environ", {"JARVIS_SNARK": "0"}):
+            self.assertEqual(main.persona_showoff(True), {"text": "Show-off mode on."})
+            self.assertEqual(main.persona_showoff(False), {"text": "Show-off mode off."})
+        for snark in persona.LEVELS:
+            for kind in ("showoff_on", "showoff_off"):
+                text = persona.line(kind, snark=snark)
+                self.assertTrue(text and "jarvis" not in text.lower())          # its own voice must never contain the wake word
+
     def test_main_serves_the_timer_line_and_a_witty_health_check(self):
         from server import main
         with mock.patch.dict("os.environ", {"JARVIS_SNARK": "0"}):

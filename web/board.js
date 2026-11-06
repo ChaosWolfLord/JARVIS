@@ -6,9 +6,12 @@
 // grows equally to the left and right to fill it (x then runs from -pad to 1920+pad), so nothing is wasted and
 // everything already drawn stays centred. In the page, a logical x sits at x + pad pixels from the board's left edge.
 
+import { inkPalette } from './theme.js';
+
 export const W = 1920;
 export const H = 1080;
-export const COLORS = { cyan: '#00e5ff', white: '#e8f4ff', amber: '#ffb300', green: '#5cff8a', red: '#ff5252' };
+// The ink colours follow the chosen look; app.js refreshes these values in place when the look is switched, then redraws.
+export const COLORS = { ...inkPalette() };
 
 const STORE_KEY = 'jarvis.board.v1';
 const MAX_W = 5120; // an ultra-wide window won't stretch the board past this

@@ -15,17 +15,22 @@ import { Lights } from './lights.js';
 import { Music } from './music.js';
 import { Apps } from './apps.js';
 import { Alerts } from './alerts.js';
+import { PhoneLink } from './phonelink.js';
+import { fitMenu } from './menufit.js';
 import { Sounds } from './sounds.js';
 import { Boot } from './boot.js';
 import { Holo } from './holo.js';
 import { News } from './news.js';
+import { ShowOff } from './showoff.js';
 import { Ambient } from './ambient.js';
 import { Privacy } from './privacy.js';
 import { MemoryPanel } from './memory.js';
 
 import { syncSettings } from './settings.js';
+import { applyLook, currentLook, inkPalette } from './theme.js';
 
 await syncSettings();            // take the PC's saved settings before anything reads them
+applyLook();                     // and show the look they chose (look.js already did a first pass from the browser's own copy)
 
 const $ = (id) => document.getElementById(id);
 
@@ -63,6 +68,15 @@ for (const name of ['cyan', 'white', 'amber', 'green', 'red']) {
   });
   $('swatches').append(sw);
 }
+
+// The ink colours, the swatches and the canvases follow the look (modern or classic); switching it repaints the board in the other palette.
+function refreshLook() {
+  Object.assign(COLORS, inkPalette());
+  document.querySelectorAll('.swatch').forEach((s) => s.style.setProperty('--sw', COLORS[s.title]));
+  board.redraw();
+}
+window.addEventListener('jarvis-look', refreshLook);
+refreshLook();
 
 $('size').addEventListener('input', (e) => { board.size = Number(e.target.value); });
 $('btn-note').addEventListener('click', () => { board.addNote({ color: board.color }); });
@@ -191,6 +205,7 @@ const timers = new Timers({
     widgets.set('timer', true, false);
     ambient.poke();
     showBubble(`<p>⏰ ${plain(what)} is done.</p>`, 20_000);
+    fetch('/api/phone/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Timer done', text: `Your ${what} is done.` }) }).catch(() => {});
     fetch(`/api/persona/timer?what=${encodeURIComponent(what)}`).then((r) => r.json()).then((d) => voice.speak(d.text), () => voice.speak(`Your ${what} is done.`));
   },
 });
@@ -210,6 +225,11 @@ chat.onHolo = (ev) => {
   sounds.play('holo');
   ambient.poke();
 };
+// "Jarvis, show off": a random hologram on the left and code being typed on the right; the same words put it away.
+const showoff = new ShowOff({
+  root: $('showoff'), sounds, speak: (t) => voice.speak(t),
+  getLine: (on) => fetch(`/api/persona/showoff?on=${on}`).then((r) => r.json()).then((d) => d.text),
+});
 const newsUI = new News({ el: $('news') });
 widgets.register({ id: 'news', title: 'News ticker', icon: '📰', blurb: 'Scrolling headlines from public news feeds',
   el: $('news'), onShow: () => newsUI.onShow(), onHide: () => newsUI.onHide() });
@@ -226,7 +246,7 @@ const musicUI = new Music({ el: $('music'), speak: (t) => voice.speak(t), toast 
 widgets.register({ id: 'music', title: 'Music', icon: '🎵', blurb: 'Play YouTube Music on your speakers',
   el: $('music'), onShow: () => musicUI.onShow(), onHide: () => musicUI.onHide() });
 widgets.restore();
-Object.assign(window.jarvis, { usage, weather, timers, widgets, system, lights: lightsUI, music: musicUI, sounds, holo });
+Object.assign(window.jarvis, { usage, weather, timers, widgets, system, lights: lightsUI, music: musicUI, sounds, holo, showoff });
 const status = new Status({ button: $('btn-status'), menu: $('status-menu'), banner: $('offline-banner'), board, voice, pen, toast });
 $('export-png').addEventListener('click', () => status.exportPng());
 $('export-json').addEventListener('click', () => status.exportJson());
@@ -264,6 +284,18 @@ pen.onWake = () => { ambient.poke(); voice.wake(); };
 // a red sticky note that is also spoken, and goes away by itself when the problem does.
 const alerts = new Alerts({ board, speak: (t) => voice.speak(t), show: (html, ms) => showBubble(html, ms), poke: () => ambient.poke(), chime: () => sounds.play('alert') });
 pen.onAlert = (m) => alerts.handle(m);
+// A saved reminder is due: a chime, the words out loud, and an amber note on the wall that stays until you close it.
+pen.onReminder = (m) => {
+  ambient.poke();
+  sounds.play('alert');
+  showBubble(`<p><b>${plain(m.title)}</b></p><p>${plain(m.text)}</p>`, 20_000);
+  board.addNote({ text: `⏰ ${m.text}`, color: 'amber' });
+  voice.speak(m.speak);
+};
+// A phone paired with JARVIS asked for something that changes the wall (a note, a timer, a widget): do it here.
+pen.onPhoneEvent = (ev) => { ambient.poke(); chat.applyRemote(ev); };
+const phoneLink = new PhoneLink({ root: $('status-menu'), fit: () => fitMenu($('status-menu')) });
+status.onOpen = () => phoneLink.refresh();
 // "Claude has finished in JARVIS": announced by the Claude Code hook (see README, "Claude Code alerts").
 pen.onNotify = (m) => {
   ambient.poke();
@@ -286,6 +318,8 @@ function maybeBoot(info) {
   } catch { return; }
   boot.run(info, voice.supported);
 }
+$('opt-look').value = currentLook();
+$('opt-look').addEventListener('change', (e) => { applyLook(e.target.value); toast(e.target.value === 'classic' ? 'Classic look' : 'Modern look'); });
 $('opt-sounds').checked = sounds.enabled;
 $('opt-sounds').addEventListener('change', (e) => { sounds.setEnabled(e.target.checked); if (e.target.checked) sounds.play('ok'); });
 $('opt-boot').checked = localStorage.getItem('jarvis.boot') !== '0';
@@ -311,11 +345,12 @@ window.jarvis.status = status;
 const privacy = new Privacy({
   overlay: $('privacy'),
   toast,
-  onLocked: () => { voice.cancelSpeech?.(); setPanel(false, false); bubble.hidden = true; status.toggle(false); widgets.toggleMenu(false); },
+  onLocked: () => { showoff.stop(); voice.cancelSpeech?.(); setPanel(false, false); bubble.hidden = true; status.toggle(false); widgets.toggleMenu(false); },
   onUnlocked: () => { board.sync(); status.poll(); },
 });
 window.jarvis.privacy = privacy;
-voice.special = (command) => privacy.handleVoice(command) || system.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || appsUI.handleVoice(command);
+voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || appsUI.handleVoice(command);
+chat.onTyped = (text) => voice.special(text);       // typing "show off", "lights off"... in the chat box works like saying it
 $('privacy-lock').addEventListener('click', () => privacy.lock());
 $('privacy-setcode').addEventListener('click', () => {
   $('privacy-form').hidden = !$('privacy-form').hidden;
@@ -342,7 +377,7 @@ $('privacy-remove').addEventListener('click', () => saveCode(null));
 // Ambient mode: after a quiet spell the wall calms down (dock fades, drawing dims, the clock grows). Anything wakes it.
 const ambient = new Ambient({
   select: $('ambient-minutes'),
-  busy: () => chat.busy || voice.speaking || keyboard.el?.hidden === false || !$('widget-menu').hidden || !$('status-menu').hidden
+  busy: () => showoff.on || chat.busy || voice.speaking || keyboard.el?.hidden === false || !$('widget-menu').hidden || !$('status-menu').hidden
     || document.body.classList.contains('kb-open') || pen.calibrating || !$('fit-ui').hidden
     || Boolean(document.activeElement?.closest?.('input, textarea, [contenteditable]')) || timers.timers.some((t) => t.done),
 });

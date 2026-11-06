@@ -3,8 +3,22 @@
 // lists of points and edges that are rotated and projected here.
 
 const TAU = Math.PI * 2;
-const CYAN = '0, 229, 255';
-const PALETTE = ['#00e5ff', '#4d8dff', '#5cff8a', '#ffb300', '#c77dff', '#ff6fb5', '#ff7a59', '#9be7ff'];
+import { canvasPalette, currentLook } from './theme.js';
+
+// The colours follow the chosen look (theme.js); draw() refreshes them at the start of every frame, so switching the look repaints at once.
+let CYAN = '0, 229, 255';
+let BRIGHT = '190, 250, 255';
+let PALE = '220, 252, 255';
+let HEXB = '#8ff3ff';
+let TEXT = 'rgba(160, 220, 235, 0.8)';
+let WHITE = '#e8f4ff';
+let SCAN = 'rgba(0, 20, 30, 0.22)';
+let PALETTE = ['#00e5ff', '#4d8dff', '#5cff8a', '#ffb300', '#c77dff', '#ff6fb5', '#ff7a59', '#9be7ff'];
+function refreshPalette() {
+  const look = currentLook(), c = canvasPalette(look), classic = look === 'classic';
+  CYAN = c.rgb; BRIGHT = classic ? '190, 250, 255' : c.bright; PALE = classic ? '220, 252, 255' : c.pale; HEXB = classic ? '#8ff3ff' : c.hexBright;
+  TEXT = c.text; WHITE = classic ? '#e8f4ff' : '#f2f5fb'; SCAN = classic ? 'rgba(0, 20, 30, 0.22)' : 'rgba(10, 14, 26, 0.2)'; PALETTE = c.series;
+}
 const W = 520, H = 360;
 
 // ---- models: { v: [[x,y,z]...], e: [[a,b]...] } within a unit sphere ---------------------------------------------
@@ -119,9 +133,9 @@ const ease = (x) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 export class Holo {
   constructor({ el }) {
     this.root = el;
-    this.canvas = el.querySelector('#holo-canvas');
-    this.caption = el.querySelector('#holo-caption');
-    this.title = el.querySelector('#holo-title');
+    this.canvas = el.querySelector('#holo-canvas, .holo-canvas');
+    this.caption = el.querySelector('#holo-caption, .holo-caption');
+    this.title = el.querySelector('#holo-title, .holo-title');
     this.canvas.width = W * 2;
     this.canvas.height = H * 2;
     this.frame = 0;
@@ -154,6 +168,7 @@ export class Holo {
   onHide() { this.visible = false; cancelAnimationFrame(this.frame); }
 
   draw(t) {
+    refreshPalette();
     const g = this.canvas.getContext('2d');
     g.setTransform(2, 0, 0, 2, 0, 0);
     g.clearRect(0, 0, W, H);
@@ -172,7 +187,7 @@ export class Holo {
       g.shadowBlur = 0;
     }
     // faint scan lines and flicker over everything
-    g.fillStyle = 'rgba(0, 20, 30, 0.22)';
+    g.fillStyle = SCAN;
     for (let y = ((t * 18) % 4) - 4; y < H; y += 4) g.fillRect(0, y, W, 1);
   }
 
@@ -205,12 +220,12 @@ export class Holo {
       g.strokeStyle = `rgba(${CYAN}, ${alpha * 0.28})`;
       g.lineWidth = 4;
       g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
-      g.strokeStyle = `rgba(190, 250, 255, ${alpha})`;
+      g.strokeStyle = `rgba(${BRIGHT}, ${alpha})`;
       g.lineWidth = 1.1;
       g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
     }
     if (pts.length <= 90) {
-      g.fillStyle = `rgba(220, 252, 255, ${0.8 * flicker})`;
+      g.fillStyle = `rgba(${PALE}, ${0.8 * flicker})`;
       for (const p of pts) g.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3);
     }
   }
@@ -226,7 +241,7 @@ export class Holo {
     const lo = Math.min(0, ...values), hi = Math.max(0.0001, ...values), span = hi - lo || 1;
     const y = (v) => bottom - ((v - lo) / span) * (bottom - top);
     g.strokeStyle = `rgba(${CYAN}, 0.18)`;
-    g.fillStyle = 'rgba(160, 220, 235, 0.8)';
+    g.fillStyle = TEXT;
     g.lineWidth = 1;
     g.textAlign = 'right';
     for (let i = 0; i <= 4; i++) {
@@ -238,7 +253,7 @@ export class Holo {
     g.textAlign = 'center';
     labels.forEach((label, i) => {
       if (n > 12 && i % 2) return;
-      g.fillStyle = 'rgba(160, 220, 235, 0.85)';
+      g.fillStyle = TEXT;
       g.fillText(label.length > 9 ? `${label.slice(0, 8)}…` : label, left + step * (i + 0.5), bottom + 16);
     });
     if (chart === 'bar') {
@@ -248,8 +263,8 @@ export class Holo {
         const grad = g.createLinearGradient(0, yy, 0, yy + h);
         grad.addColorStop(0, `rgba(${CYAN}, 0.85)`); grad.addColorStop(1, `rgba(${CYAN}, 0.12)`);
         g.fillStyle = grad; g.fillRect(x, yy, w, h);
-        g.strokeStyle = 'rgba(200, 250, 255, 0.9)'; g.strokeRect(x + 0.5, yy + 0.5, w - 1, h - 1);
-        if (local > 0.9) { g.fillStyle = '#e8f4ff'; g.textAlign = 'center'; g.fillText(fmt(v), x + w / 2, yy - 9); }
+        g.strokeStyle = `rgba(${BRIGHT}, 0.9)`; g.strokeRect(x + 0.5, yy + 0.5, w - 1, h - 1);
+        if (local > 0.9) { g.fillStyle = WHITE; g.textAlign = 'center'; g.fillText(fmt(v), x + w / 2, yy - 9); }
       });
     } else {
       const xs = values.map((_, i) => left + step * (i + 0.5)), ys = values.map(y);
@@ -261,10 +276,10 @@ export class Holo {
         if (i === 0) g.moveTo(xs[0], ys[0]); else g.lineTo(px, py);
       }
       g.shadowColor = `rgba(${CYAN}, 1)`; g.shadowBlur = 10;
-      g.strokeStyle = '#8ff3ff'; g.lineWidth = 2.2; g.stroke(); g.shadowBlur = 0;
-      xs.forEach((x, i) => { if (i <= upTo + 0.2) { g.fillStyle = '#e8f4ff'; g.beginPath(); g.arc(x, ys[i], 3.2, 0, TAU); g.fill(); if (n <= 12) { g.textAlign = 'center'; g.fillText(fmt(values[i]), x, ys[i] - 11); } } });
+      g.strokeStyle = HEXB; g.lineWidth = 2.2; g.stroke(); g.shadowBlur = 0;
+      xs.forEach((x, i) => { if (i <= upTo + 0.2) { g.fillStyle = WHITE; g.beginPath(); g.arc(x, ys[i], 3.2, 0, TAU); g.fill(); if (n <= 12) { g.textAlign = 'center'; g.fillText(fmt(values[i]), x, ys[i] - 11); } } });
     }
-    if (unit) { g.fillStyle = 'rgba(160, 220, 235, 0.7)'; g.textAlign = 'left'; g.fillText(unit, left, 10); }
+    if (unit) { g.fillStyle = TEXT; g.textAlign = 'left'; g.fillText(unit, left, 10); }
   }
 
   drawPie(g, t, grow) {
@@ -281,9 +296,9 @@ export class Holo {
     labels.slice(0, 12).forEach((label, i) => {
       const yy = 40 + i * 24;
       g.fillStyle = PALETTE[i % PALETTE.length]; g.fillRect(310, yy - 5, 10, 10);
-      g.fillStyle = '#e8f4ff'; g.fillText(`${label.length > 14 ? `${label.slice(0, 13)}…` : label}  ${Math.round((values[i] / total) * 100)}%`, 328, yy);
+      g.fillStyle = WHITE; g.fillText(`${label.length > 14 ? `${label.slice(0, 13)}…` : label}  ${Math.round((values[i] / total) * 100)}%`, 328, yy);
     });
-    g.textAlign = 'center'; g.fillStyle = '#e8f4ff'; g.font = '20px "Segoe UI", system-ui, sans-serif';
+    g.textAlign = 'center'; g.fillStyle = WHITE; g.font = '20px "Segoe UI", system-ui, sans-serif';
     g.fillText(fmt(total), cx, cy);
   }
 
@@ -296,7 +311,7 @@ export class Holo {
       for (let i = 0; i < n; i++) { const a = (i / n) * TAU - Math.PI / 2; g.lineTo(cx + Math.cos(a) * R * (ring / 4), cy + Math.sin(a) * R * (ring / 4)); }
       g.closePath(); g.stroke();
     }
-    g.font = '12px "Segoe UI", system-ui, sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'center'; g.fillStyle = 'rgba(190, 235, 245, 0.9)';
+    g.font = '12px "Segoe UI", system-ui, sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'center'; g.fillStyle = `rgba(${PALE}, 0.9)`;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * TAU - Math.PI / 2;
       g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke();
@@ -306,6 +321,6 @@ export class Holo {
     values.forEach((v, i) => { const a = (i / n) * TAU - Math.PI / 2, d = (Math.max(0, v) / hi) * R * grow; g.lineTo(cx + Math.cos(a) * d, cy + Math.sin(a) * d); });
     g.closePath();
     g.fillStyle = `rgba(${CYAN}, 0.22)`; g.fill();
-    g.shadowColor = `rgba(${CYAN}, 1)`; g.shadowBlur = 10; g.strokeStyle = '#8ff3ff'; g.lineWidth = 2; g.stroke(); g.shadowBlur = 0;
+    g.shadowColor = `rgba(${CYAN}, 1)`; g.shadowBlur = 10; g.strokeStyle = HEXB; g.lineWidth = 2; g.stroke(); g.shadowBlur = 0;
   }
 }

@@ -129,6 +129,7 @@ export class Chat {
     if (!text || this.busy) return;
     this.input.value = '';
     this.input.style.height = 'auto';
+    if (this.onTyped?.(text)) return;     // a command JARVIS's own page handles (show off, privacy, lights, music...): typing it works like saying it
     return this.ask(text);
   }
 
@@ -168,6 +169,17 @@ export class Chat {
     this.stop();
     const began = Date.now();
     while (this.busy && Date.now() - began < 1500) await new Promise((r) => setTimeout(r, 30));
+  }
+
+  /** Something a phone's answer did to the wall (the phone itself only gets a line about it). */
+  applyRemote(ev) {
+    if (ev.type === 'add_note') {
+      const at = ev.x == null ? {} : { x: this.board.fromAi(ev.x), y: this.board.fromAi(ev.y) };
+      this.board.addNote({ text: ev.text, color: ev.color, ...at });
+    } else if (ev.type === 'board_edit') this.board.applyEdit(ev);
+    else if (ev.type === 'widget') this.onWidget?.(ev);
+    else if (ev.type === 'holo') this.onHolo?.(ev);
+    else if (ev.type === 'timer') this.onTimer?.(ev);
   }
 
   setBusy(on) {

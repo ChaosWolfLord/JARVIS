@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080a10">
+  <title>JARVIS</title>
+  <link rel="stylesheet" href="phone.css">
+</head>
+<body>
+  <main id="pair" hidden>
+    <div class="orb" aria-hidden="true"></div>
+    <h1>JARVIS</h1>
+    <p>Pair this phone. On the PC, open the status menu, find <b>Phone</b> and press <b>Show pairing code</b>.</p>
+    <form id="pair-form" autocomplete="off">
+      <input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Six-digit code" aria-label="Pairing code">
+      <button type="submit">Pair</button>
+    </form>
+    <p id="pair-msg" class="msg-error" role="alert"></p>
+  </main>
+
+  <div id="chat" hidden>
+    <header>
+      <div class="orb small" aria-hidden="true"></div>
+      <div class="title"><b>JARVIS</b><span id="state">connecting…</span></div>
+      <button id="menu-btn" class="icon" aria-label="Settings" aria-expanded="false">⋯</button>
+    </header>
+    <div id="menu" hidden>
+      <label><input type="checkbox" id="opt-wall" checked> Show my questions and the answers on the wall</label>
+      <label><input type="checkbox" id="opt-speak"> Also say the answer on the PC speakers</label>
+      <label><input type="checkbox" id="opt-read"> Read the answers aloud on this phone</label>
+      <label><input type="checkbox" id="opt-auto" checked> Send when I stop talking</label>
+      <label><input type="checkbox" id="opt-awake"> Keep the screen on (so alerts reach me; uses battery)</label>
+      <button id="forget" type="button">Forget this phone</button>
+    </div>
+    <div id="log" aria-live="polite"></div>
+    <form id="composer">
+      <textarea id="input" rows="1" placeholder="Ask JARVIS…" autocomplete="off" enterkeyhint="send"></textarea>
+      <button type="button" id="mic" class="icon" aria-label="Speak">🎤</button>
+      <button type="submit" id="send">Send</button>
+    </form>
+    <p id="hint" hidden></p>
+  </div>
+  <script src="phone.js"></script>
+</body>
+</html>

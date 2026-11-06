@@ -55,7 +55,7 @@ Use Chrome or Edge. Click the mic button (or press M) once and allow the microph
 
 Only phrases that start with "Jarvis" (or "Hey/OK Jarvis") are acted on. Everything else is ignored, but the browser still sends your speech to Google's or Microsoft's speech service to transcribe it, so this is not private. The offline version is planned for the mini PC. Replies use your best installed British voice; in Edge the "Natural" voices (e.g. Ryan) sound much better. Code from JARVIS still needs a click on Run.
 
-Shortcuts: P pen, E eraser, N new note, F fullscreen, M voice on/off, L border lights on/off, J fit to wall, K calibrate pen, B keyboard, T touch mode, W widgets menu, U token usage, A calm mode, H privacy screen, Tab open/close the chat, Ctrl+Z / Ctrl+Y undo/redo.
+Shortcuts: P pen, E eraser, N new note, F fullscreen, M voice on/off, L side lights on/off, J fit to wall, K calibrate pen, B keyboard, T touch mode, W widgets menu, U token usage, A calm mode, H privacy screen, Tab open/close the chat, Ctrl+Z / Ctrl+Y undo/redo.
 
 ## Fit to wall (projector)
 
@@ -254,9 +254,36 @@ JARVIS can tell you when Claude Code is done. A small hook script (`tools/claude
 - **Settings:** `%LOCALAPPDATA%\jarvis\claude_notify.json`, for example `{"min_seconds": 60, "events": ["finished", "failed"]}` (events: finished, permission, idle, failed; `"enabled": false` silences it). `JARVIS_CLAUDE_NOTIFY=0` in `.env` turns it off on the JARVIS side. To remove it entirely, delete the entries that mention `claude_notify.py` from `~/.claude/settings.json`.
 - Claude Code reads its settings when a session starts, so a session that was already open may need restarting (or its `/hooks` menu opened once) before the new hooks take effect.
 
+## Show-off mode
+
+Say **"Jarvis, show off"** and a random 3D hologram appears on the left while code is typed out on the right. Say it again (or "stop showing off") to put it away. It is pure decoration: the code is generated nonsense that only looks real (functions in Python, JavaScript, C and Rust, log lines, hex dumps and assembly, with colouring), and it never touches your files, the AI or the network. The hologram changes every 10 seconds or so to something new: the ready-made shapes (cube, sphere, torus, helix, globe, reactor...) and generated ones (torus knots, Lissajous curves, crystal lattices, gyroscopes, nautilus shells). It is handled on the PC, so it is instant and uses no AI request. It doesn't block the whiteboard (you can keep drawing between the panels), it stops calm mode from starting while it is on, and it switches off when the privacy screen comes up. It isn't remembered across restarts.
+
+## Reminders
+
+Say or type things like "remind me at 5 to call Sam", "remind me in 40 minutes to check the oven" or "tomorrow at 9 remind me to take the bins out". JARVIS saves them on the PC (not in the browser), so closing the page or restarting JARVIS never loses one. When one is due you hear a chime and JARVIS says it, and an amber note with the reminder stays on the wall until you close it. "What reminders do I have?" lists them and "cancel the reminder about Sam" (or "cancel all my reminders") removes them. If nobody could hear it when it came due (the page was closed, or the privacy screen was up) it waits and arrives as soon as the page opens, worded as "You asked me to remind you...". Use timers for short countdowns; reminders are for clock times and days ahead. Reminders are kept for a day after they are delivered, then forgotten.
+
+
+## JARVIS on your phone (text and voice, home Wi-Fi only)
+
+Open the status menu, find **Phone**, and press **Show pairing code**. On your phone (same Wi-Fi) scan the QR code or type the address shown (it looks like `https://192.168.1.x:8443`). Your phone browser warns once that the connection is not trusted: that is expected, because JARVIS makes its own certificate (it needs HTTPS because Android only allows the microphone on secure pages). Choose Advanced, then Continue. Type the six-digit code and you are paired; after that the phone just opens straight to the chat.
+
+- **Type or talk.** The microphone button uses Chrome's speech recognition (Chrome on Android; it needs the phone's internet). With "Send when I stop talking" on, a spoken question is sent by itself.
+- **Answers** appear on the phone. By default the question and answer also pop up on the wall; tick "Also say the answer on the PC speakers" for it to be spoken there, or "Read the answers aloud on this phone".
+- **Things on the wall work from the phone**: "set a timer", "show the weather", "put a note on the board" all happen on the PC's screen.
+- **Alerts on the phone.** While the phone page is open, JARVIS also pushes to it: reminders that come due, finished timers, "Claude has finished" and new problems the system monitor finds. The phone buzzes, chimes and shows an amber banner (tap it to dismiss). A phone browser cannot be woken once the page is closed or the screen is off (that would need a push service from outside your Wi-Fi), so turn on "Keep the screen on" in the ⋯ menu if you want alerts to reach you; a reminder that comes due while the page is closed waits on the PC and arrives, marked late, as soon as you open the page.
+
+- **Safety.** The phone door is a separate, tiny web server (`server/phone.py`) that serves only the phone page, pairing and chat. It refuses anything that is not from your home network, a pairing code lasts ten minutes, works once and locks for a minute after five wrong guesses, and a paired phone's secret never touches a cookie. JARVIS itself is still reachable only from this PC. Anything that would ask "Allow?" on the PC (running code, sending messages, closing apps, fixes) is skipped when asked from the phone: do those at the PC. The privacy screen locks the phone out too, and every phone question is in the activity log. "Forget phones" in the same menu section un-pairs everything.
+- **Settings** (in `.env`): `JARVIS_PHONE=0` turns the phone door off, `JARVIS_PHONE_PORT=8443` changes its port, `JARVIS_PHONE_TLS=0` serves plain http (then Chrome needs `chrome://flags/#unsafely-treat-insecure-origin-as-secure` set to your PC's address for the microphone).
+- **If the phone can't connect:** check it is on the same Wi-Fi as the PC (not the guest network, and not mobile data), that the PC's address did not change (the status menu shows the current one), and that Windows Firewall lets Python through on your network (Windows asks the first time).
+
+
+## Look: modern or classic
+
+JARVIS opens in the **modern** look: calm frosted-glass panels, soft sky-blue and violet accents, quiet type, and a gentler orb. The original neon-on-black look is still there as **classic**. Switch in the status menu under Display ("Look"); the choice is saved on the PC with your other settings, so every browser shows the same one. How it works, in case you want to change the colours: `web/style.css` holds the structure and the classic look (every neon tint is `rgba(var(--accent-rgb), ...)`), `web/modern.css` re-skins it only while `<html>` has the `modern` class (set before the page paints by `web/look.js`), and `web/theme.js` supplies the colours for the parts drawn on canvases (the orb, hologram card, start-up sequence and the board's ink).
+
 ## Calm mode (the idle wall)
 
-When nobody has touched, drawn on or spoken to JARVIS for a while (2 minutes by default), the wall calms down: the dock and every widget fade away, your drawing and the border lights dim, a **big orb** comes up in the middle of the screen, and the **time** moves to the top above it (a timer that is still running shows under the orb). The orb still reacts to your voice. Anything wakes it: a touch, a key, pen movement, "Jarvis", a finished timer. The touch that wakes it doesn't also press whatever was underneath. Press **A** to try it, and set the delay (or "never") in the status menu under Display. It never starts while you are typing, a menu or the keyboard is open, JARVIS is answering or speaking, or a timer is ringing.
+When nobody has touched, drawn on or spoken to JARVIS for a while (2 minutes by default), the wall calms down: the dock and every widget fade away, your drawing and the side lights dim, a **big orb** comes up in the middle of the screen, and the **time** moves to the top above it (a timer that is still running shows under the orb). The orb still reacts to your voice. Anything wakes it: a touch, a key, pen movement, "Jarvis", a finished timer. The touch that wakes it doesn't also press whatever was underneath. Press **A** to try it, and set the delay (or "never") in the status menu under Display. It never starts while you are typing, a menu or the keyboard is open, JARVIS is answering or speaking, or a timer is ringing.
 
 ## What JARVIS remembers
 
@@ -348,4 +375,4 @@ Models that can't see images (e.g. gpt-oss) still get the note list and your que
 ## Layout
 
 - `server/` FastAPI app: `agent.py` (chat, tools, the agent loop), `agent_tools.py` (web and file look-ups), `openrouter.py` (finds the free models), `runner.py` (approved code), `store.py` (memory, usage), `diagnostics.py` (system health and alert rules), `fixes.py` (safe repairs that ask first), `lights.py` (Govee lights), `music.py` (YouTube Music on speakers), `persona.py` (personality), `holo.py` (checks for hologram data), `news.py` (headlines), `apps.py` (opening and closing apps), `main.py` (routes). In `web/`: `holo.js` (3D and charts), `boot.js`, `sounds.js`, `news.js`, `settings.js` (settings kept on the PC).
-- `web/` the interface: `board.js` (canvas and notes, takes input through `penDown/penMove/penUp`, which is where the IR pen will plug in), `chat.js`, `voice.js` (wake word and speech), `app.js`.
+- `server/phone.py` and `web/phone/`: the phone door (separate port, pairing, chat) and the phone page. `web/` the interface: `modern.css`, `look.js` and `theme.js` (the modern/classic look), `board.js` (canvas and notes, takes input through `penDown/penMove/penUp`, which is where the IR pen will plug in), `chat.js`, `voice.js` (wake word and speech), `app.js`.

@@ -23,5 +23,21 @@ class MenuFit(unittest.TestCase):
         self.assertIn("ok   ", run.stdout)
 
 
+@unittest.skipUnless(shutil.which("node"), "Node isn't installed, so the browser-side checks can't run")
+class ShowOffMode(unittest.TestCase):
+    def test_show_off_phrases_models_and_code(self):
+        run = subprocess.run(["node", "tests/js/showoff.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)
+
+
+@unittest.skipUnless(shutil.which("node"), "Node isn't installed, so the browser-side checks can't run")
+class LookSwitch(unittest.TestCase):
+    def test_modern_and_classic_looks(self):
+        run = subprocess.run(["node", "tests/js/theme.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

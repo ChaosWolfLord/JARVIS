@@ -64,7 +64,7 @@ export class Status {
   toggle(open = this.menu.hidden) {
     this.menu.hidden = !open;
     this.button.classList.toggle('active', open);
-    if (open) { this.backups = null; this.render(); fitMenu(this.menu); }
+    if (open) { this.backups = null; this.render(); fitMenu(this.menu); this.onOpen?.(); }
   }
 
   /** 'ok', 'warn' or 'down' for the light on the dock. */

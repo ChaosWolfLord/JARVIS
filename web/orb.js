@@ -7,6 +7,8 @@
 //   thinking  waiting for the AI: the white arcs spin fast and the ring throbs
 //   speaking  JARVIS is talking: the bars dance by themselves and ripples leave the ring
 
+import { orbPalette } from './theme.js';
+
 const TAU = Math.PI * 2;
 const BARS = 72;
 const HALF = BARS / 2;
@@ -29,6 +31,7 @@ export class Orb {
     this.size = 0;
     this.resize();
     new ResizeObserver(() => this.resize()).observe(canvas);
+    window.addEventListener('jarvis-look', () => { this.palette = null; });   // the look was switched: pick the other colours up on the next frame
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -141,21 +144,27 @@ export class Orb {
     const lift = Math.min(1, this.level * 0.9 + (state === 'listening' ? 0.35 : 0) + (state === 'thinking' ? 0.2 * breathe : 0));
     const R = S * 0.285 * (1 + this.level * 0.025);
 
-    // The faint outer circle and the ring of dots on it.
+    // The colours come from the chosen look (theme.js); the modern one is calmer: one faint circle, thinner bars, a softer ring.
+    const P = this.palette || (this.palette = orbPalette());
+    const modern = P.modern;
+
+    // The faint outer circle (and, in the classic look, the ring of dots on it).
     ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(150, 215, 255, 0.26)';
+    ctx.strokeStyle = `rgba(${P.halo}, ${modern ? 0.16 : 0.26})`;
     ctx.beginPath(); ctx.arc(c, c, S * 0.468, 0, TAU); ctx.stroke();
-    ctx.fillStyle = 'rgba(190, 230, 255, 0.5)';
-    for (let i = 0; i < 90; i++) {
-      const a = (i / 90) * TAU;
-      ctx.beginPath(); ctx.arc(c + Math.cos(a) * S * 0.452, c + Math.sin(a) * S * 0.452, S * 0.0035, 0, TAU); ctx.fill();
+    if (!modern) {
+      ctx.fillStyle = `rgba(${P.dots}, 0.5)`;
+      for (let i = 0; i < 90; i++) {
+        const a = (i / 90) * TAU;
+        ctx.beginPath(); ctx.arc(c + Math.cos(a) * S * 0.452, c + Math.sin(a) * S * 0.452, S * 0.0035, 0, TAU); ctx.fill();
+      }
     }
 
     // Speaking: ripples leave the ring.
     if (state === 'speaking') {
       for (let k = 0; k < 2; k++) {
         const p = (t * 0.8 + k * 0.5) % 1;
-        ctx.strokeStyle = `rgba(110, 205, 255, ${0.5 * (1 - p)})`;
+        ctx.strokeStyle = `rgba(${P.ripple}, ${0.5 * (1 - p)})`;
         ctx.lineWidth = S * 0.006;
         ctx.beginPath(); ctx.arc(c, c, R + p * S * 0.16, 0, TAU); ctx.stroke();
       }
@@ -163,13 +172,14 @@ export class Orb {
 
     // The voice bars.
     ctx.lineCap = 'round';
-    ctx.lineWidth = S * 0.0105;
+    ctx.lineWidth = S * (modern ? 0.0075 : 0.0105);
     const r0 = S * 0.345;
+    const [b0, b1] = [P.bar0, P.bar1];
     for (let i = 0; i < BARS; i++) {
       const v = this.bars[i];
       const a = -Math.PI / 2 + (i / BARS) * TAU;
       const len = S * (0.01 + v * 0.088);
-      ctx.strokeStyle = `rgba(${150 + 90 * v}, ${215 + 30 * v}, 255, ${0.35 + 0.65 * Math.min(1, v * 1.4)})`;
+      ctx.strokeStyle = `rgba(${Math.round(b0[0] + (b1[0] - b0[0]) * v)}, ${Math.round(b0[1] + (b1[1] - b0[1]) * v)}, ${Math.round(b0[2] + (b1[2] - b0[2]) * v)}, ${(modern ? 0.28 : 0.35) + 0.65 * Math.min(1, v * 1.4)})`;
       ctx.beginPath();
       ctx.moveTo(c + Math.cos(a) * r0, c + Math.sin(a) * r0);
       ctx.lineTo(c + Math.cos(a) * (r0 + len), c + Math.sin(a) * (r0 + len));
@@ -177,40 +187,42 @@ export class Orb {
     }
 
     // The two white arcs that circle the ring.
-    ctx.lineWidth = S * 0.0075;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.lineWidth = S * (modern ? 0.005 : 0.0075);
+    ctx.strokeStyle = `rgba(${modern ? P.inner : '255, 255, 255'}, ${modern ? 0.8 : 0.92})`;
     ctx.beginPath(); ctx.arc(c, c, S * 0.322, this.spinA, this.spinA + 0.95); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.strokeStyle = `rgba(${modern ? P.inner : '255, 255, 255'}, ${modern ? 0.4 : 0.55})`;
     ctx.beginPath(); ctx.arc(c, c, S * 0.322, this.spinB, this.spinB + 0.34); ctx.stroke();
 
-    // The dark centre, then the glowing blue ring around it.
-    ctx.fillStyle = 'rgba(1, 5, 11, 0.97)';
+    // The dark centre, then the glowing ring around it.
+    ctx.fillStyle = P.centre;
     ctx.beginPath(); ctx.arc(c, c, R - S * 0.012, 0, TAU); ctx.fill();
 
     const grad = ctx.createLinearGradient(c - R, c - R, c + R, c + R);
-    grad.addColorStop(0, '#8fe0ff');
-    grad.addColorStop(0.5, '#2e9bff');
-    grad.addColorStop(1, '#1b63ff');
-    ctx.lineWidth = S * (0.046 + lift * 0.014);
+    grad.addColorStop(0, P.ring[0]);
+    grad.addColorStop(0.5, P.ring[1]);
+    grad.addColorStop(1, P.ring[2]);
+    ctx.lineWidth = S * ((modern ? 0.03 : 0.046) + lift * 0.014);
     ctx.strokeStyle = grad;
-    ctx.shadowColor = `rgba(50, 165, 255, ${0.65 + 0.3 * lift})`;
-    ctx.shadowBlur = S * (0.07 + 0.07 * lift + 0.02 * breathe);
+    ctx.shadowColor = `rgba(${P.glow}, ${(modern ? 0.4 : 0.65) + 0.3 * lift})`;
+    ctx.shadowBlur = S * ((modern ? 0.09 : 0.07) + 0.07 * lift + 0.02 * breathe);
     ctx.beginPath(); ctx.arc(c, c, R, 0, TAU); ctx.stroke();
     ctx.shadowBlur = S * 0.025;
     ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.lineWidth = Math.max(1, S * 0.006);
-    ctx.strokeStyle = 'rgba(215, 245, 255, 0.85)';
-    ctx.beginPath(); ctx.arc(c, c, R - S * 0.032, 0, TAU); ctx.stroke();
+    if (!modern) {
+      ctx.lineWidth = Math.max(1, S * 0.006);
+      ctx.strokeStyle = `rgba(${P.inner}, 0.85)`;
+      ctx.beginPath(); ctx.arc(c, c, R - S * 0.032, 0, TAU); ctx.stroke();
+    }
 
     // The name.
     ctx.fillStyle = '#fff';
-    ctx.font = `300 ${S * 0.092}px "Segoe UI", "Helvetica Neue", sans-serif`;
+    ctx.font = `${modern ? 200 : 300} ${S * (modern ? 0.082 : 0.092)}px ${modern ? '"Segoe UI Variable Display", ' : ''}"Segoe UI", "Helvetica Neue", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const gap = S * 0.011;
+    const gap = S * (modern ? 0.016 : 0.011);
     if ('letterSpacing' in ctx) ctx.letterSpacing = `${gap}px`;
-    ctx.shadowColor = 'rgba(120, 200, 255, 0.55)';
+    ctx.shadowColor = `rgba(${P.name}, ${modern ? 0.35 : 0.55})`;
     ctx.shadowBlur = S * 0.03;
     ctx.fillText('JARVIS', c + gap / 2, c + S * 0.004);
     ctx.shadowBlur = 0;

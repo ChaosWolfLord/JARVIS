@@ -2,6 +2,8 @@
 // the name appears, and JARVIS says it is online. It plays once each time the JARVIS server starts (not on every page reload),
 // can be skipped with a touch or key, and can be switched off in the status menu.
 
+import { canvasPalette } from './theme.js';
+
 const TAU = Math.PI * 2;
 const LINE_MS = 380;
 const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || '', textContent: text ?? '' });
@@ -90,24 +92,24 @@ export class Boot {
     const c = this.canvas, dpr = window.devicePixelRatio || 1;
     const w = c.clientWidth, h = c.clientHeight;
     if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
-    const g = c.getContext('2d');
+    const g = c.getContext('2d'), P = canvasPalette();
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
     const cx = w / 2, cy = h * 0.42, R = Math.min(w, h) * 0.2;
     const ease = (x) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
     const t = p * 6;
     g.lineCap = 'round';
-    g.shadowColor = 'rgba(0, 229, 255, 0.9)';
+    g.shadowColor = `rgba(${P.rgb}, 0.9)`;
     g.shadowBlur = 14;
     // outer ring that draws itself
-    g.strokeStyle = 'rgba(0, 229, 255, 0.85)';
+    g.strokeStyle = `rgba(${P.rgb}, 0.85)`;
     g.lineWidth = 2.5;
     g.beginPath();
     g.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + TAU * ease(p * 2.2));
     g.stroke();
     // three spinning arc segments
     [[0.8, 1.0, 1.4], [0.64, -1.6, 1.0], [0.48, 2.2, 0.8]].forEach(([k, speed, span], i) => {
-      g.strokeStyle = `rgba(0, 190, 255, ${0.35 + 0.15 * i})`;
+      g.strokeStyle = `rgba(${P.arc}, ${0.35 + 0.15 * i})`;
       g.lineWidth = 3 - i * 0.6;
       const a = t * speed * ease(p * 1.6) + i;
       g.beginPath();
@@ -116,7 +118,7 @@ export class Boot {
     });
     // tick marks that appear around the ring
     g.shadowBlur = 6;
-    g.strokeStyle = 'rgba(160, 240, 255, 0.7)';
+    g.strokeStyle = `rgba(${P.bright}, 0.7)`;
     g.lineWidth = 1.5;
     const ticks = 60, shown = Math.floor(ticks * ease(p * 2.6));
     for (let i = 0; i < shown; i++) {
@@ -129,8 +131,8 @@ export class Boot {
     // the core brightens at the end
     const core = ease((p - 0.55) * 2.2);
     const grad = g.createRadialGradient(cx, cy, 0, cx, cy, R * 0.4);
-    grad.addColorStop(0, `rgba(210, 250, 255, ${0.9 * core})`);
-    grad.addColorStop(1, 'rgba(0, 229, 255, 0)');
+    grad.addColorStop(0, `rgba(${P.pale}, ${0.9 * core})`);
+    grad.addColorStop(1, `rgba(${P.rgb}, 0)`);
     g.shadowBlur = 0;
     g.fillStyle = grad;
     g.beginPath();

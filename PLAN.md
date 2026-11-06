@@ -165,6 +165,7 @@ Each phase has a pass condition. Don't buy the next group of parts until the cur
 
 ### Later
 - Widgets, holographic keyboard, gestures, split layout (writing area on the left, display-only panels above the bed).
+- **Optional, only after the pen and camera work (decided 2026-11-02): Makeblock CyberPi as a desk status light.** The user already owns one (ESP32, 128x128 screen, 5 RGB LEDs, buttons/joystick, motion sensor; USB-C and Wi-Fi/Bluetooth; MicroPython or the `cyberpi` library, whose documentation is thin). Keep it tiny: it only shows listening / thinking / alert and has one button to interrupt JARVIS, one-way status from the PC plus button presses back, any action still going through the confirm-first rules. Off by default so it adds nothing unless plugged in. Skipped for now because the projected wall already shows the same status and it is one more thing that can break; not a purchase ($0, so no effect on the $150 budget).
 
 ## 6. Software architecture
 

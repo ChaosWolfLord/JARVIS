@@ -12,12 +12,12 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import datetime
 from typing import Iterator
 
 import openai
 
-from . import agent_tools, apps, audit, diagnostics, discord_tools, fixes, holo, lights, music, news, persona, google_auth, google_tools, openrouter, runner, store
+from . import agent_tools, apps, audit, diagnostics, discord_tools, fixes, holo, lights, music, news, persona, google_auth, google_tools, openrouter, reminders, runner, store
 from . import mcp as mcp_client
 
 store.load_env()
@@ -418,6 +418,23 @@ TOOLS = [
         ["name"],
     ),
     _tool(
+        "reminder",
+        "Reminders that are saved on the PC and survive restarts: JARVIS says them out loud and puts a note on the wall at the time (and on the "
+        "user's phone if it is open). Use this for anything at a clock time or hours or days ahead ('remind me at 5 to call Sam', 'tomorrow at "
+        "9 take the bins out'); use 'timer' for short countdowns. action 'add' needs text and when: give 'minutes' from now, or 'at' as local "
+        "24-hour time 'YYYY-MM-DD HH:MM' (use today's date and the current time from the system message; 'HH:MM' alone means the next time "
+        "that happens). 'list' shows what is waiting. 'cancel' removes reminders whose text contains the given words, or all of them with "
+        "everything true.",
+        {
+            "action": {"type": "string", "enum": ["add", "list", "cancel"]},
+            "text": {"type": "string", "description": "What to remind about (add), or words to match (cancel). Under 200 characters."},
+            "minutes": {"type": "number", "description": "Minutes from now (add)."},
+            "at": {"type": "string", "description": "Local time as 'YYYY-MM-DD HH:MM' or 'HH:MM' (add)."},
+            "everything": {"type": "boolean", "description": "With cancel: remove all reminders."},
+        },
+        ["action"],
+    ),
+    _tool(
         "timer",
         "Start a countdown timer on the board (it rings and JARVIS says so when it ends), or cancel timers. "
         "For 'ten minutes' give minutes 10. Cancel with a label to remove matching timers, or no label to remove all.",
@@ -608,7 +625,7 @@ CONNECTORS = {
 ACTION_TOOLS = frozenset({"gmail_draft_reply", "calendar_add_event", "discord_send", "system_fix", "app_close"})
 
 # Tools whose result goes back to the model, which then continues. Board and memory tools end the turn.
-FOLLOW_UP_TOOLS = {"run_python", "web_search", "fetch_url", "list_files", "read_file", "recall", "system_status", "system_details", *CONNECTORS}
+FOLLOW_UP_TOOLS = {"run_python", "web_search", "fetch_url", "list_files", "read_file", "recall", "system_status", "system_details", "reminder", *CONNECTORS}
 
 
 def active_tools() -> list[dict]:
@@ -635,6 +652,8 @@ def _run_lookup(name: str, args: dict) -> str:
             return apps.tool(args)
         if name == "lights":
             return lights.tool(args)
+        if name == "reminder":
+            return _reminder_tool(args)
         if name == "music":
             return music.tool(args)
         if name == "headlines":
@@ -658,6 +677,24 @@ def _run_lookup(name: str, args: dict) -> str:
         return f"Error: {e}"
 
 
+def _reminder_tool(args: dict) -> str:
+    action = args.get("action")
+    try:
+        if action == "add":
+            due = reminders.parse_when(args)
+            entry = reminders.reminders.add(args.get("text"), due)
+            return f"Reminder saved for {reminders.when_text(due)}: {entry['text']}"
+        if action == "cancel":
+            gone = reminders.reminders.cancel(str(args.get("text") or ""), args.get("everything") is True)
+            return f"Cancelled {len(gone)} reminder{'s' if len(gone) != 1 else ''}: " + "; ".join(r["text"] for r in gone) if gone else "No waiting reminder matches that."
+        waiting = reminders.reminders.open()
+        if not waiting:
+            return "No reminders are waiting."
+        return "Waiting reminders:\n" + "\n".join(f"- {reminders.when_text(r['due'])}: {r['text']}" for r in waiting)
+    except reminders.ReminderError as e:
+        return f"Error: {e}"
+
+
 def _system_snapshot() -> dict:
     """The latest measurements from the running monitor (set by main.py), or an empty picture before it has started."""
     return diagnostics.current.snapshot() if diagnostics.current else {}
@@ -668,7 +705,7 @@ def _step_text(name: str, args: dict) -> str:
               "gmail_search": args.get("query"), "discord_read": args.get("channel")}.get(name)
     label = {"web_search": "Searching", "fetch_url": "Reading", "list_files": "Listing files", "read_file": "Opening", "recall": "Checking memory",
              "calendar_events": "Checking your calendar", "gmail_search": "Searching Gmail", "gmail_read": "Reading an email",
-             "discord_channels": "Listing Discord channels", "system_status": "Checking the system", "lights": "Changing the lights", "apps": "Checking apps", "app_close": "Preparing to close a program", "headlines": "Reading the headlines", "music": "Asking the speaker", "system_details": "Looking closer at the system", "discord_read": "Reading Discord",
+             "discord_channels": "Listing Discord channels", "system_status": "Checking the system", "lights": "Changing the lights", "apps": "Checking apps", "app_close": "Preparing to close a program", "headlines": "Reading the headlines", "music": "Asking the speaker", "system_details": "Looking closer at the system", "discord_read": "Reading Discord", "reminder": "Saving a reminder",
              "gmail_draft_reply": "Preparing a reply", "calendar_add_event": "Preparing an event", "discord_send": "Preparing a message", "system_fix": "Preparing a fix"}[name]
     return f"{label}: {str(detail)[:80]}" if detail else label
 
@@ -679,7 +716,7 @@ def build_system(message: str = "", summary: str = "") -> str:
     known = "\n".join(f"[{f['id']}] ({f['kind']}{', pinned' if f['pinned'] else ''}) {f['fact']}" for f in facts) or "(nothing yet)"
     more = f"\n({total - len(facts)} more in memory: use recall to search them.)" if total > len(facts) else ""
     earlier = f"\n\nEarlier in this conversation (summary): {summary.strip()[:1500]}" if summary.strip() else ""
-    return f"{PERSONA.replace('@@CHARACTER@@', persona.character())}\nToday is {date.today():%A %d %B %Y}.\n\nWhat you know about the user:\n{known}{more}{earlier}"
+    return f"{PERSONA.replace('@@CHARACTER@@', persona.character())}\nToday is {datetime.now():%A %d %B %Y}, and the local time is {datetime.now():%H:%M}.\n\nWhat you know about the user:\n{known}{more}{earlier}"
 
 
 def _board_context(board: dict | None) -> str:
