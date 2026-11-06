@@ -9,3 +9,10 @@ data/
 *.bak
 .claude/settings.local.json
 node_modules/
+
+# Android app: build output goes to %LOCALAPPDATA%\jarvis-android, but Gradle still leaves a few folders here
+android/.gradle/
+android/build/
+android/local.properties
+android/.idea/
+*.apk

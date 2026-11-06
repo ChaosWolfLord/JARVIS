@@ -17,6 +17,7 @@
       <button type="submit">Pair</button>
     </form>
     <p id="pair-msg" class="msg-error" role="alert"></p>
+    <p><a id="get-app" href="/jarvis.apk">Get the Android app</a> <small>(works while a pairing code is showing on the PC)</small></p>
   </main>
 
   <div id="chat" hidden>
@@ -31,6 +32,7 @@
       <label><input type="checkbox" id="opt-read"> Read the answers aloud on this phone</label>
       <label><input type="checkbox" id="opt-auto" checked> Send when I stop talking</label>
       <label><input type="checkbox" id="opt-awake"> Keep the screen on (so alerts reach me; uses battery)</label>
+      <button id="change-pc" type="button" class="plain" hidden>Change PC</button>
       <button id="forget" type="button">Forget this phone</button>
     </div>
     <div id="log" aria-live="polite"></div>

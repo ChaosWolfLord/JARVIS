@@ -24,7 +24,9 @@ export class PhoneLink {
         return;
       }
       const phones = d.paired.length ? `${d.paired.length} paired: ${d.paired.join(', ')}.` : 'No phone is paired yet.';
-      this.info.textContent = `On your phone's browser (same Wi-Fi) open ${d.url}. ${phones}`;
+      const print = d.fingerprint ? ` The app asks you to compare this fingerprint: ${d.fingerprint}.` : '';
+      const app = d.app ? ' The Android app is ready (the phone page offers it while a pairing code is showing).' : ' The Android app has not been built yet (android\\build.bat).';
+      this.info.textContent = `On your phone (same Wi-Fi) open ${d.url}. ${phones}${print}${app}`;
     } catch {
       this.info.textContent = 'Could not read the phone status.';
     }

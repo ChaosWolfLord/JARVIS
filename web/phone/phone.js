@@ -4,10 +4,22 @@ const $ = (id) => document.getElementById(id);
 const TOKEN_KEY = 'jarvis.phone.token';
 const PREF_KEY = 'jarvis.phone.prefs';
 
+// Inside the JARVIS Android app, window.JarvisApp exists: the app keeps the pairing token, listens for speech and keeps the screen on.
+const app = window.JarvisApp || null;
+
 const store = {
-  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
-  set(key, value) { try { localStorage.setItem(key, value); } catch { /* private window: it just won't be remembered */ } },
-  del(key) { try { localStorage.removeItem(key); } catch { /* nothing to remove */ } },
+  get(key) {
+    if (app && key === TOKEN_KEY) return app.getToken() || null;
+    try { return localStorage.getItem(key); } catch { return null; }
+  },
+  set(key, value) {
+    if (app && key === TOKEN_KEY) { app.setToken(value); return; }
+    try { localStorage.setItem(key, value); } catch { /* private window: it just won't be remembered */ }
+  },
+  del(key) {
+    if (app && key === TOKEN_KEY) { app.clearToken(); return; }
+    try { localStorage.removeItem(key); } catch { /* nothing to remove */ }
+  },
 };
 
 let token = store.get(TOKEN_KEY);
@@ -57,6 +69,7 @@ async function api(path, options = {}) {
 
 // ---- pairing -------------------------------------------------------------------------------------------------------
 function deviceName() {
+  if (app) return 'JARVIS app';
   const ua = navigator.userAgent || '';
   const model = /;\s*([^;)]+?)\s+Build\//.exec(ua) || /Android[^;]*;\s*([^;)]+)\)/.exec(ua);
   return (model ? model[1] : /Android/.test(ua) ? 'Android phone' : 'phone').slice(0, 30);
@@ -223,12 +236,16 @@ $('menu-btn').addEventListener('click', () => {
 for (const [id, key] of [['opt-wall', 'wall'], ['opt-speak', 'speak'], ['opt-read', 'read'], ['opt-auto', 'auto'], ['opt-awake', 'awake']]) {
   $(id).addEventListener('change', (e) => { prefs[key] = e.target.checked; store.set(PREF_KEY, JSON.stringify(prefs)); if (key === 'awake') keepAwake(); });
 }
+if (app) { $('change-pc').hidden = false; $('get-app').hidden = true; }
+$('change-pc').addEventListener('click', () => app?.forgetServer());
 $('forget').addEventListener('click', () => unpair('This phone was forgotten here. To use it again, pair it with a new code.'));
 
 // ---- voice ---------------------------------------------------------------------------------------------------------
+// In the app the phone's own speech recognition is used (through the app); in a browser, Chrome's.
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let listening = false;
+let finalText = '';
 
 function hint(text) {
   $('hint').textContent = text || '';
@@ -236,10 +253,11 @@ function hint(text) {
 }
 
 function setupVoice() {
+  if (app) return;
   if (!Recognition) {
     $('mic').disabled = true;
     $('mic').style.opacity = '0.4';
-    hint('Voice needs Chrome on Android. Typing works everywhere.');
+    hint('Voice needs Chrome on Android, or the JARVIS app. Typing works everywhere.');
     return;
   }
   if (!window.isSecureContext) {
@@ -247,20 +265,54 @@ function setupVoice() {
   }
 }
 
-function stopListening() {
-  if (recognition && listening) { try { recognition.stop(); } catch { /* already stopped */ } }
+function micState(on) {
+  listening = on;
+  $('mic').classList.toggle('on', on);
+  $('input').placeholder = on ? 'Listening…' : 'Ask JARVIS…';
 }
+
+function micError(code) {
+  if (code === 'not-allowed' || code === 'service-not-allowed') hint(app ? 'The microphone is blocked. Allow it for JARVIS in the phone settings (Apps, JARVIS, Permissions).' : 'The microphone was blocked. Allow it in Chrome (the lock icon next to the address), then try again.');
+  else if (code === 'network') hint('Speech recognition needs the phone’s internet connection (it uses Google).');
+  else if (code === 'no-speech') hint('I didn’t hear anything. Try again a little closer.');
+  else if (code === 'busy') hint('The speech recognizer is busy. Try again in a moment.');
+}
+
+function micEnded() {
+  micState(false);
+  if (prefs.auto && finalText.trim()) send(finalText);
+  finalText = '';
+}
+
+function stopListening() {
+  if (!listening) return;
+  if (app) app.stopListening();
+  else if (recognition) { try { recognition.stop(); } catch { /* already stopped */ } }
+}
+
+// The app reports what it heard through this function: start, partial, final, error, end.
+window.__speech = (type, text) => {
+  if (type === 'start') micState(true);
+  else if (type === 'partial' || type === 'final') {
+    if (type === 'final') finalText = text;
+    $('input').value = text;
+    autosize();
+  } else if (type === 'error') micError(text);
+  else if (type === 'end') micEnded();
+};
 
 $('mic').addEventListener('click', () => {
   if (listening) { stopListening(); return; }
-  if (!Recognition || busy) return;
+  if (busy) return;
   hint('');
+  finalText = '';
+  if (app) { app.startListening(navigator.language || 'en-US'); return; }
+  if (!Recognition) return;
   recognition = new Recognition();
   recognition.lang = navigator.language || 'en-US';
   recognition.interimResults = true;
   recognition.continuous = false;
-  let finalText = '';
-  recognition.onstart = () => { listening = true; $('mic').classList.add('on'); $('input').placeholder = 'Listening…'; };
+  recognition.onstart = () => micState(true);
   recognition.onresult = (e) => {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -270,17 +322,8 @@ $('mic').addEventListener('click', () => {
     $('input').value = (finalText + interim).trim();
     autosize();
   };
-  recognition.onerror = (e) => {
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') hint('The microphone was blocked. Allow it in Chrome (the lock icon next to the address), then try again.');
-    else if (e.error === 'network') hint('Speech recognition needs the phone’s internet connection (it uses Google).');
-    else if (e.error === 'no-speech') hint('I didn’t hear anything. Try again a little closer.');
-  };
-  recognition.onend = () => {
-    listening = false;
-    $('mic').classList.remove('on');
-    $('input').placeholder = 'Ask JARVIS…';
-    if (prefs.auto && finalText.trim()) send(finalText);
-  };
+  recognition.onerror = (e) => micError(e.error);
+  recognition.onend = micEnded;
   try { recognition.start(); } catch { hint('Could not start the microphone.'); }
 });
 
@@ -347,6 +390,7 @@ async function listenForAlerts() {
 }
 
 async function keepAwake() {
+  if (app) { app.keepScreenOn(!!prefs.awake); return; }
   try {
     if (prefs.awake && 'wakeLock' in navigator && !wake) wake = await navigator.wakeLock.request('screen');
     else if (!prefs.awake && wake) { await wake.release(); wake = null; }

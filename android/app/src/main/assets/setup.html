@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JARVIS</title>
+  <style>
+    :root { --bg: #080a10; --text: #d4dbe8; --white: #f2f5fb; --dim: #8993a9; --accent: 122, 190, 255; --accent2: 176, 142, 255; --line: rgba(255,255,255,.1); --red: #ff7a85; --green: #6ee7b0;
+      font-family: "Segoe UI", Roboto, system-ui, sans-serif; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+    body { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px;
+      background: radial-gradient(ellipse 90% 45% at 10% 0%, rgba(var(--accent), .16), transparent 65%), radial-gradient(ellipse 80% 45% at 100% 100%, rgba(var(--accent2), .14), transparent 65%), var(--bg); text-align: center; }
+    .orb { width: 72px; height: 72px; border-radius: 50%; border: 6px solid transparent;
+      background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(135deg, #bfe0ff, rgb(var(--accent)), rgb(var(--accent2))) border-box; box-shadow: 0 0 34px rgba(var(--accent), .35); }
+    h1 { margin: 6px 0 0; font-weight: 250; letter-spacing: 8px; text-indent: 8px; color: var(--white); }
+    p { margin: 0; max-width: 34ch; line-height: 1.5; color: var(--dim); }
+    b { color: var(--white); font-weight: 600; }
+    form, .row { display: flex; gap: 10px; width: min(380px, 100%); }
+    input { flex: 1; min-width: 0; padding: 12px 14px; font: inherit; font-size: 17px; color: var(--white); background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 16px; outline: none; }
+    input:focus { border-color: rgba(var(--accent), .6); box-shadow: 0 0 0 3px rgba(var(--accent), .15); }
+    button { font: inherit; font-weight: 600; min-height: 46px; padding: 0 20px; border: 0; border-radius: 16px; cursor: pointer; color: #0a1220; background: rgb(var(--accent)); }
+    button.quiet { background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--line); font-weight: 400; }
+    .print { font: 600 22px/1.2 Consolas, "Courier New", monospace; letter-spacing: 1px; white-space: nowrap; color: var(--white); padding: 14px 18px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.04); }
+    .err { color: var(--red); min-height: 1.4em; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="orb" aria-hidden="true"></div>
+  <h1>JARVIS</h1>
+
+  <section id="find" style="display:contents">
+    <p>Connect to JARVIS on your PC. Both must be on the same Wi-Fi. On the PC, open the status menu and look under <b>Phone</b> for the address.</p>
+    <form id="find-form" autocomplete="off">
+      <input id="address" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="192.168.1.20:8443" aria-label="PC address">
+      <button type="submit" id="check">Check</button>
+    </form>
+    <p id="msg" class="err" role="alert"></p>
+  </section>
+
+  <section id="confirm" hidden style="display:contents">
+    <p>Is this the <b>fingerprint</b> shown on the PC (status menu, Phone)? If it matches, this really is your PC.</p>
+    <div class="print" id="print"></div>
+    <div class="row"><button type="button" class="quiet" id="no">No, go back</button><button type="button" id="yes">Yes, connect</button></div>
+  </section>
+
+  <section id="offline" hidden style="display:contents">
+    <p id="offline-text">Can’t reach your PC.</p>
+    <div class="row"><button type="button" class="quiet" id="change">Change PC</button><button type="button" id="retry">Try again</button></div>
+  </section>
+
+  <script>
+    const app = window.JarvisApp;
+    const $ = (id) => document.getElementById(id);
+    const q = new URLSearchParams(location.search);
+    let found = null;
+
+    function show(which) {
+      for (const id of ['find', 'confirm', 'offline']) $(id).hidden = id !== which;
+      for (const id of ['find', 'confirm', 'offline']) $(id).style.display = id === which ? 'contents' : 'none';
+    }
+
+    if (q.get('offline')) {
+      show('offline');
+      const why = q.get('why') || '';
+      $('offline-text').textContent = why === 'certificate'
+        ? `The PC at ${q.get('address') || 'that address'} does not match the one you confirmed, so JARVIS refused to connect. If this is a different PC, or JARVIS was reinstalled, choose Change PC and confirm the new fingerprint.`
+        : `Can’t reach your PC at ${q.get('address') || 'the saved address'}. Is JARVIS running, and is this phone on the same Wi-Fi?${why ? ` (${why.replace(/^net::/, '')})` : ''}`;
+    } else {
+      show('find');
+    }
+
+    $('find-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const a = $('address').value.trim();
+      if (!a) { $('msg').textContent = 'Type the address from the PC.'; return; }
+      $('msg').textContent = 'Checking…';
+      $('check').disabled = true;
+      app.probe(a);
+    });
+
+    window.onProbe = (r) => {
+      $('check').disabled = false;
+      if (!r.ok) { $('msg').textContent = r.error || 'Could not connect.'; return; }
+      found = r;
+      $('msg').textContent = '';
+      $('print').textContent = r.print;
+      show('confirm');
+    };
+
+    $('no').addEventListener('click', () => { found = null; show('find'); });
+    $('yes').addEventListener('click', () => { if (found) app.trust(found.address, found.pin); });
+    $('retry').addEventListener('click', () => app.retry());
+    $('change').addEventListener('click', () => app.forgetServer());
+  </script>
+</body>
+</html>

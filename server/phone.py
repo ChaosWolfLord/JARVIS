@@ -44,6 +44,7 @@ WEB_PHONE = Path(__file__).resolve().parent.parent / "web" / "phone"
 PHONES_FILE = store.STATE / "phones.json"
 CERT_FILE = store.STATE / "phone-cert.pem"
 KEY_FILE = store.STATE / "phone-key.pem"
+APK_FILE = store.STATE / "app" / "jarvis.apk"        # the Android app (built by android/build.bat), offered to a phone that is being paired
 CODE_TTL_S = 600
 MAX_TRIES = 5
 LOCK_S = 60
@@ -128,6 +129,11 @@ class Phones:
             self._fails = 0
             return {"code": self._code, "expires_in": CODE_TTL_S}
 
+    def code_active(self) -> bool:
+        """Is a pairing code showing on the PC right now? (The app file is only offered then.)"""
+        with self._lock:
+            return bool(self._code) and self.now() <= self._expires and self.now() >= self._locked_until
+
     def pair(self, code: str, name: str = "") -> tuple[str | None, int]:
         """(token, 0) when the code is right; (None, seconds_to_wait) when locked out; (None, 0) for a wrong or expired code."""
         with self._lock:
@@ -188,7 +194,13 @@ def ensure_cert(ip: str, cert: Path | None = None, key: Path | None = None) -> t
             return cert, key
     except (OSError, ValueError, x509.ExtensionNotFound):
         pass
-    private = ec.generate_private_key(ec.SECP256R1())
+    private = None
+    try:
+        private = serialization.load_pem_private_key(key.read_bytes(), password=None)   # keep the same key: the app pins it, so a new address must not break the pairing
+    except (OSError, ValueError, TypeError):
+        pass
+    if private is None:
+        private = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "JARVIS phone")])
     now = datetime.datetime.now(datetime.timezone.utc)
     built = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(private.public_key())
@@ -201,6 +213,25 @@ def ensure_cert(ip: str, cert: Path | None = None, key: Path | None = None) -> t
     key.write_bytes(private.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     cert.write_bytes(built.public_bytes(serialization.Encoding.PEM))
     return cert, key
+
+
+def fingerprint(cert: Path | None = None) -> str:
+    """SHA-256 of the certificate's public key, as 64 hex characters (what the Android app pins). Empty when there is no certificate yet."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    try:
+        have = x509.load_pem_x509_certificate((cert or CERT_FILE).read_bytes())
+    except (OSError, ValueError):
+        return ""
+    der = have.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(der)
+    return digest.finalize().hex()
+
+
+def short_fingerprint(full: str) -> str:
+    """The first 16 characters in groups of four, 'A1B2 C3D4 E5F6 0718': short enough to compare by eye with the app's screen."""
+    return " ".join(full[i:i + 4] for i in range(0, 16, 4)).upper() if full else ""
 
 
 def qr_svg(text: str) -> bytes:
@@ -270,8 +301,9 @@ def wall_line(ev: dict) -> str:
 
 def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcast: Callable[[dict], None],
               is_locked: Callable[[], bool] = lambda: False, events: "Events | None" = None,
-              on_events_connect: Callable[[], None] | None = None) -> FastAPI:
+              on_events_connect: Callable[[], None] | None = None, apk: Path | None = None) -> FastAPI:
     events = events if events is not None else Events()
+    apk = apk or APK_FILE
     app = FastAPI(title="JARVIS phone", docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.middleware("http")
@@ -302,6 +334,15 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
     @app.get("/phone.css")
     def style():
         return page("phone.css", "text/css; charset=utf-8")
+
+    @app.get("/jarvis.apk")
+    def app_file():
+        if not apk.is_file():
+            raise HTTPException(404, "The Android app hasn't been built on the PC yet (run android\\build.bat).")
+        if not phones.code_active():
+            raise HTTPException(403, "Press 'Show pairing code' on the PC first: the app is only offered while a phone is being paired.")
+        audit.record("phone", "app file downloaded")
+        return FileResponse(apk, media_type="application/vnd.android.package-archive", filename="JARVIS.apk")
 
     def bearer(authorization: str | None) -> str:
         token = (authorization or "").removeprefix("Bearer ").strip()
@@ -419,7 +460,7 @@ class PhoneService:
     def url(self) -> str:
         return f"{'https' if self.tls else 'http'}://{self.ip}:{self.port}" if self.port else ""
 
-    def start(self, chat_turn, broadcast, is_locked, port: int = 8443, tls: bool = True, host: str = "0.0.0.0", on_events_connect=None) -> None:
+    def start(self, chat_turn, broadcast, is_locked, port: int = 8443, tls: bool = True, host: str = "0.0.0.0", on_events_connect=None, apk: Path | None = None) -> None:
         import uvicorn
         self.ip, self.port, self.tls, self.error = lan_ip(), port, tls, ""
         try:
@@ -427,7 +468,7 @@ class PhoneService:
             if tls:
                 cert, key = ensure_cert(self.ip)
                 kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
-            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect)
+            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk)
             self.server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False, **kwargs))
         except Exception as e:  # noqa: BLE001 - a phone door that can't start must never stop JARVIS starting
             self.error = f"{e.__class__.__name__}: {e}"
@@ -448,4 +489,5 @@ class PhoneService:
 
     def status(self) -> dict:
         running = bool(self.server and self.server.started and self.thread and self.thread.is_alive())
-        return {"running": running, "url": self.url if running else "", "error": self.error, "paired": self.phones.names(), "tls": self.tls}
+        return {"running": running, "url": self.url if running else "", "error": self.error, "paired": self.phones.names(), "tls": self.tls,
+                "fingerprint": short_fingerprint(fingerprint()) if running and self.tls else "", "app": APK_FILE.is_file()}

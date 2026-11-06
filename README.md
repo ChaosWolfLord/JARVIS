@@ -277,6 +277,17 @@ Open the status menu, find **Phone**, and press **Show pairing code**. On your p
 - **If the phone can't connect:** check it is on the same Wi-Fi as the PC (not the guest network, and not mobile data), that the PC's address did not change (the status menu shows the current one), and that Windows Firewall lets Python through on your network (Windows asks the first time).
 
 
+## The JARVIS Android app
+
+The phone page can also be installed as a real app (`android/`): a small native shell around the same page, with its own icon. It fixes the two things a browser can't: it trusts your PC's own certificate (by pinning its key, so there is no browser warning, and it refuses any other certificate), and it uses the phone's own speech recognition. It keeps your pairing, so a new PC address doesn't un-pair you. It only ever loads your PC and its own setup page.
+
+- **Build it** (on the PC, needs Android Studio, which also gives it Java and the SDK): run `android\build.bat`. Everything it generates goes under `%LOCALAPPDATA%\jarvis-android`; the finished file is `%LOCALAPPDATA%\jarvis\app\jarvis.apk`. `build.bat debug` makes a debug build for testing in the emulator.
+- **Install it:** on the PC press **Show pairing code** (status menu, Phone). On the phone open the phone page in Chrome (accept the one-time warning), choose **Get the Android app**, open the downloaded file and allow "install unknown apps" for Chrome when Android asks. The file is only offered while a pairing code is showing.
+- **First run:** type the address the PC shows (like `192.168.1.20:8443`), press Check, and compare the fingerprint on the phone with the one in the PC's status menu (Phone). If they match, press Yes: that fixes the PC's key in the app. Then pair with the six-digit code as before.
+- **If the PC's address changes** the app says it can't reach the PC and offers Try again or Change PC; the PC keeps the same key, so you only retype the address. If the fingerprint ever really changes (a different PC), it refuses and asks you to confirm again.
+- **Not in this version:** background notifications and the offline assistant (the app needs the PC on, same Wi-Fi). Those are the next steps.
+- Android 10 or newer. The app is signed with your PC's local debug key, so keep `%USERPROFILE%\.android\debug.keystore` if you want updates to install over the old version.
+
 ## Look: modern or classic
 
 JARVIS opens in the **modern** look: calm frosted-glass panels, soft sky-blue and violet accents, quiet type, and a gentler orb. The original neon-on-black look is still there as **classic**. Switch in the status menu under Display ("Look"); the choice is saved on the PC with your other settings, so every browser shows the same one. How it works, in case you want to change the colours: `web/style.css` holds the structure and the classic look (every neon tint is `rgba(var(--accent-rgb), ...)`), `web/modern.css` re-skins it only while `<html>` has the `modern` class (set before the page paints by `web/look.js`), and `web/theme.js` supplies the colours for the parts drawn on canvases (the orb, hologram card, start-up sequence and the board's ink).

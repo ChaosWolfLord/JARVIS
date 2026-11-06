@@ -1,6 +1,6 @@
 # JARVIS Projected AI Whiteboard: Build Plan
 
-Last updated: 2026-11-05
+Last updated: 2026-11-06
 
 ## 1. Goal
 
@@ -238,15 +238,16 @@ Everything below runs on the current Windows PC; the README has the how-to for e
 - **Voice and personality:** browser voice with natural Edge voices, optional offline wake word, interrupting an answer, a witty personality (sarcasm level adjustable), a privacy screen with an unlock code, and typed chat commands that work like spoken ones.
 - **The room:** Govee lights (local network), YouTube Music on the Nest Hub, opening and closing apps with limits (never Settings or Control Panel), system health with safe one-click fixes, Claude Code "finished" alerts, weather, timers, news ticker, holograms and charts, show-off mode, a start-up sequence with sounds.
 - **Looks (2026-11-05):** a modern calm-glass look (default) and the original neon look as "Classic", switchable in the status menu; slow-cycling side lights; a screen saver that shows only the orb and the time.
-- **Phone (2026-11-04):** a separate small HTTPS server on the home Wi-Fi for text and voice from an Android phone: pairing with a code, no "Allow" actions from the phone, privacy screen locks it out. Phone alerts for reminders, finished timers, Claude finishing and new system problems arrive while the phone page is open (no background push: that would need an outside service).
+- **Phone (2026-11-04):** a separate small HTTPS server on the home Wi-Fi for text and voice from an Android phone: pairing with a code, no "Allow" actions from the phone, privacy screen locks it out. Phone alerts for reminders, finished timers, Claude finishing and new system problems arrive while the phone page is open (no background push: that would need an outside service). **Android app, stage 1 (2026-11-06):** `android/` is a small native shell (Java, no libraries) around the same phone page: it pins the PC's key after you compare a fingerprint (no browser warning), uses the phone's own speech recognition, keeps the pairing, and shows a clear offline or certificate-mismatch page. `android/build.bat` builds it; the PC offers the file to a phone while a pairing code is showing. Tested in an emulator, not yet on the real phone.
 - **Reminders (2026-11-05):** saved on the PC, spoken with a wall note, delivered late if nobody could hear them, listed and cancelled by voice.
 - **Touch software:** the pen tracker (finds a bright IR point, smooths, calibrates with 9 targets), finger mode with MediaPipe hands, the tracked point used as a pointer across the whole interface, the holographic keyboard, touch mode, and Fit to wall. Not built yet: the drift check, wall-glint learning, palm rejection.
 - **Start with Windows:** `install_autostart.bat` / `remove_autostart.bat`; `JARVIS.bat` keeps the server running and opens the board window.
 
-## 11. Ideas backlog (nothing here is started)
+## 11. Ideas backlog (nothing here is started, except the app stages noted)
 
 In rough order of value for effort:
 
+0. **Android app, stages 2 and 3 (planned, not started):** reminders and notifications that work with the PC off (local alarms), then a standalone brain so it works away from home and without the server (calls the AI directly with keys kept on the phone; chat, memory, reminders, timers, web search and weather only), syncing memory and reminders with the PC when connected. Needs the user's OK to keep API keys on the phone.
 1. **Morning briefing:** the first time the screen wakes, JARVIS gives weather, today's calendar, headlines and any system alerts. All the pieces exist.
 2. **Scenes:** "movie mode" (dim the lights, calm mode, pause music), "focus mode", and so on, defined once and called by name.
 3. **To-do list on the wall:** "add milk to my list" and "what's on my list", kept as a saved checklist note.
