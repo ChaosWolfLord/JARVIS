@@ -29,6 +29,7 @@ import org.json.JSONObject;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.regex.Pattern;
 
@@ -53,6 +54,17 @@ public class MainActivity extends Activity {
     private volatile boolean trustedPage = false;       // is the page on screen one of ours (the setup page or the pinned PC)?
     private SpeechRecognizer recognizer;
     private String pendingLanguage;
+    private static WeakReference<MainActivity> visible = new WeakReference<>(null);   // the activity on screen, if any (alarms hand it the reminder to show too)
+
+    static final int NOTIFY_REQUEST = 8;
+
+    /** An alert or a ringing reminder, for the page to show too when the app is open. */
+    static void deliver(String eventJson) {
+        final MainActivity a = visible.get();
+        if (a == null) return;
+        final String js = "window.__alert&&window.__alert(" + eventJson + ")";
+        a.runOnUiThread(() -> a.web.evaluateJavascript(js, null));
+    }
 
     @Override
     protected void onCreate(Bundle state) {
@@ -81,6 +93,16 @@ public class MainActivity extends Activity {
             }
         });
         if (state != null) web.restoreState(state); else load();
+        if (prefs.getBoolean("alerts", false) && !prefs.getString("token", "").isEmpty()) AlertService.start(this);
+        Reminders.scheduleAll(this);                    // alarms are set again every time the app opens (cheap, and heals anything lost)
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        visible = new WeakReference<>(this);
+        String shown = web.getUrl();
+        if (shown != null && shown.startsWith(SETUP) && shown.contains("offline=1") && !address().isEmpty()) load();      // coming back to the app: try the PC again
     }
 
     @Override
@@ -92,6 +114,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        if (visible.get() == this) visible = new WeakReference<>(null);
         stopRecognizer();
     }
 
@@ -238,6 +261,7 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
+        if (code == NOTIFY_REQUEST) return;               // the system remembers the answer; the page asks again with allowed()
         if (code != MIC_REQUEST) return;
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED && pendingLanguage != null) startRecognizer(pendingLanguage);
         else { emit("error", "not-allowed"); emit("end", ""); }
@@ -249,7 +273,7 @@ public class MainActivity extends Activity {
         private boolean ok() { return trustedPage; }
 
         @JavascriptInterface
-        public String version() { return "1.0"; }
+        public String version() { return "1.1"; }
 
         /** The saved address (host:port) of the PC, or "" before setup. */
         @JavascriptInterface
@@ -341,6 +365,61 @@ public class MainActivity extends Activity {
                     startRecognizer(language);
                 }
             });
+        }
+
+        // ---- reminders and alerts ----
+        /** The waiting reminders as JSON: [{id, text, due(ms), pc}]. */
+        @JavascriptInterface
+        public String reminders() { return ok() ? Reminders.list(MainActivity.this) : "[]"; }
+
+        /** Adds a reminder made on the phone; returns "" or what is wrong. */
+        @JavascriptInterface
+        public String addReminder(String text, double dueMs) {
+            if (!ok()) return "Not allowed here.";
+            String problem = Reminders.add(MainActivity.this, text, (long) dueMs);
+            if (problem.isEmpty()) requestNotifications();
+            return problem;
+        }
+
+        @JavascriptInterface
+        public void deleteReminder(String id) {
+            if (ok() && id != null) Reminders.delete(MainActivity.this, id);
+        }
+
+        /** What the PC has not been told about yet (JSON), for POST /reminders/sync. */
+        @JavascriptInterface
+        public String pendingReminders() { return ok() ? Reminders.pending(MainActivity.this) : "{}"; }
+
+        /** The PC's answer to the sync, with what was sent. */
+        @JavascriptInterface
+        public void applySync(String sent, String answer) {
+            if (ok() && sent != null && answer != null) Reminders.applySync(MainActivity.this, sent, answer);
+        }
+
+        /** The page already announced this reminder (the PC pushed it): don't ring it again here. */
+        @JavascriptInterface
+        public void heard(String id) {
+            if (ok() && id != null) Reminders.heard(MainActivity.this, id);
+        }
+
+        @JavascriptInterface
+        public boolean notificationsAllowed() { return Notify.allowed(MainActivity.this); }
+
+        @JavascriptInterface
+        public void requestNotifications() {
+            if (!ok() || Notify.allowed(MainActivity.this)) return;
+            runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFY_REQUEST));
+        }
+
+        /** Alerts from the PC while the app is closed (a small notification stays up while this is on). */
+        @JavascriptInterface
+        public boolean backgroundAlerts() { return ok() && prefs.getBoolean("alerts", false); }
+
+        @JavascriptInterface
+        public void setBackgroundAlerts(boolean on) {
+            if (!ok()) return;
+            prefs.edit().putBoolean("alerts", on).apply();
+            if (on) { requestNotifications(); AlertService.start(MainActivity.this); } else AlertService.stop(MainActivity.this);
         }
 
         @JavascriptInterface

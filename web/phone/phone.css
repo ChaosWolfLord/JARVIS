@@ -63,6 +63,20 @@ header { display: flex; align-items: center; gap: 12px; padding: max(12px, env(s
 #input { flex: 1; min-width: 0; resize: none; max-height: 140px; min-height: 46px; padding: 12px 14px; font-size: 16px; line-height: 1.3; overflow-y: auto; scrollbar-width: none; }
 #hint { margin: 0; padding: 0 16px 12px; font-size: 12px; color: var(--dim); line-height: 1.45; }
 
+#rem { position: absolute; inset: 0; z-index: 5; padding: max(14px, env(safe-area-inset-top)) 16px 16px; overflow-y: auto; background: var(--bg); }
+#rem > header { padding: 0 0 12px; background: none; border: 0; justify-content: space-between; backdrop-filter: none; }
+#rem > header b { color: var(--white); font-size: 18px; }
+#rem-list { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+#rem-list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+#rem-list .when { color: rgb(var(--accent)); font-size: 13px; }
+#rem-list .what { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--white); }
+#rem-list button, #rem .quick button { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 12px; min-height: 40px; padding: 0 12px; }
+#rem-list .empty { color: var(--dim); border-style: dashed; justify-content: center; }
+#rem-form { display: flex; flex-direction: column; gap: 10px; }
+#rem-form input { padding: 12px 14px; font: inherit; font-size: 16px; color: var(--white); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; outline: none; color-scheme: dark; }
+#rem-form .quick { display: flex; flex-wrap: wrap; gap: 8px; }
+#rem-add { background: rgb(var(--accent)); color: #0a1220; font-weight: 600; border-radius: 14px; min-height: 46px; }
+#rem .hint { margin: 14px 0 0; font-size: 13px; color: var(--dim); line-height: 1.45; }
 #pair a { color: rgb(var(--accent)); }
 #pair small { color: var(--dim); }
 #menu button.plain { background: var(--surface); color: var(--text); border-color: var(--line); }

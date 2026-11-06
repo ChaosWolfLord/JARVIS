@@ -32,9 +32,23 @@
       <label><input type="checkbox" id="opt-read"> Read the answers aloud on this phone</label>
       <label><input type="checkbox" id="opt-auto" checked> Send when I stop talking</label>
       <label><input type="checkbox" id="opt-awake"> Keep the screen on (so alerts reach me; uses battery)</label>
+      <label id="bg-row" hidden><input type="checkbox" id="opt-bg"> Alerts when the app is closed (keeps a small notification)</label>
+      <button id="open-rem" type="button" class="plain">Reminders…</button>
       <button id="change-pc" type="button" class="plain" hidden>Change PC</button>
       <button id="forget" type="button">Forget this phone</button>
     </div>
+    <section id="rem" hidden>
+      <header><b>Reminders</b><button type="button" id="rem-close" class="icon" aria-label="Close">✕</button></header>
+      <ul id="rem-list"></ul>
+      <form id="rem-form" autocomplete="off">
+        <input id="rem-text" type="text" maxlength="200" placeholder="Remind me to…" aria-label="Reminder text">
+        <input id="rem-when" type="datetime-local" aria-label="When">
+        <div class="quick"><button type="button" data-min="10">+10 min</button><button type="button" data-min="60">+1 hour</button><button type="button" data-tom="9">Tomorrow 9:00</button></div>
+        <button type="submit" id="rem-add">Add reminder</button>
+        <p id="rem-msg" class="msg-error" role="alert"></p>
+      </form>
+      <p class="hint">Reminders made here ring on this phone even when the PC is off, and sync with the PC when it is on.</p>
+    </section>
     <div id="log" aria-live="polite"></div>
     <form id="composer">
       <textarea id="input" rows="1" placeholder="Ask JARVIS…" autocomplete="off" enterkeyhint="send"></textarea>

@@ -127,6 +127,17 @@ class Reminders:
                 self._write(keep)
             return gone
 
+    def cancel_ids(self, ids: list[str]) -> list[dict]:
+        """Removes the waiting reminders with exactly these ids (the phone cancelled them); returns what was removed."""
+        wanted = {str(i) for i in ids}
+        with self._lock:
+            items, gone, keep = self._read(), [], []
+            for r in items:
+                (gone if r["id"] in wanted and not r.get("done") else keep).append(r)
+            if gone:
+                self._write(keep)
+            return gone
+
     def due(self) -> list[dict]:
         now = self.now()
         return [r for r in self.open() if r["due"] <= now]
@@ -165,7 +176,7 @@ class Courier:
             done = []
             for r in self.store.due():
                 ev = self.event(r)
-                reached = self.send_pc(ev) + self.send_phone({"type": "push", "title": ev["title"], "text": ev["text"]})
+                reached = self.send_pc(ev) + self.send_phone({"type": "push", "title": ev["title"], "text": ev["text"], "rid": r["id"]})
                 if reached:
                     done.append(r["id"])
             if done:

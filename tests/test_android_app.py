@@ -21,8 +21,16 @@ def bridge_methods() -> set[str]:
 
 
 class Permissions(unittest.TestCase):
-    def test_only_the_internet_and_the_microphone(self):
-        self.assertEqual(sorted(re.findall(r'uses-permission android:name="android\.permission\.(\w+)"', MANIFEST)), ["INTERNET", "RECORD_AUDIO"])
+    def test_only_the_permissions_the_features_need(self):
+        asked = sorted(re.findall(r'uses-permission android:name="android\.permission\.(\w+)"', MANIFEST))
+        self.assertEqual(asked, sorted(["INTERNET", "RECORD_AUDIO", "POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "USE_EXACT_ALARM", "SCHEDULE_EXACT_ALARM",
+                                        "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC"]))
+
+    def test_only_the_boot_receiver_can_be_reached_from_outside(self):
+        self.assertRegex(MANIFEST, r'<receiver android:name="\.AlarmReceiver" android:exported="false"')
+        self.assertRegex(MANIFEST, r'<receiver android:name="\.BootReceiver" android:exported="true"')
+        self.assertRegex(MANIFEST, r'<service android:name="\.AlertService" android:exported="false" android:foregroundServiceType="dataSync"')
+        self.assertEqual(MANIFEST.count('android:exported="true"'), 2)                   # the screen and the boot receiver
 
     def test_no_plain_http_and_no_backup_of_the_pairing(self):
         self.assertIn('usesCleartextTraffic="false"', MANIFEST)
@@ -69,6 +77,21 @@ class Contract(unittest.TestCase):
         self.assertIn("window.__speech = (type, text)", PHONE_JS)
         for kind in ("start", "partial", "final", "error", "end"):
             self.assertIn(f"'{kind}'", PHONE_JS)
+
+    def test_reminder_alarms_ring_without_the_app_and_are_set_again_after_a_restart(self):
+        reminders = (APP / "java" / "dev" / "jarvis" / "phone" / "Reminders.java").read_text("utf-8")
+        self.assertIn("setExactAndAllowWhileIdle", reminders)
+        self.assertIn("RTC_WAKEUP", reminders)
+        boot = (APP / "java" / "dev" / "jarvis" / "phone" / "BootReceiver.java").read_text("utf-8")
+        self.assertIn("scheduleAll", boot)
+        self.assertIn("ACTION_BOOT_COMPLETED", boot)
+        self.assertIn("scheduleAll(this)", JAVA)                      # also every time the app opens
+
+    def test_the_alert_listener_only_trusts_the_pinned_key(self):
+        service = (APP / "java" / "dev" / "jarvis" / "phone" / "AlertService.java").read_text("utf-8")
+        self.assertIn("the PC's key is not the one that was confirmed", service)
+        self.assertNotIn("getAcceptedIssuers() { return null", service)
+        self.assertIn('getBoolean("alerts", false)', service)         # it stops itself when the setting is off
 
     def test_the_setup_page_and_the_app_agree_on_the_probe(self):
         self.assertIn("window.onProbe&&window.onProbe(", JAVA)

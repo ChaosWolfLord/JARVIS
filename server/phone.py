@@ -38,7 +38,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import audit, runner, store
+from . import audit, reminders as reminders_mod, runner, store
 
 WEB_PHONE = Path(__file__).resolve().parent.parent / "web" / "phone"
 PHONES_FILE = store.STATE / "phones.json"
@@ -285,6 +285,19 @@ class PhoneChat(BaseModel):
     speak: bool = False        # also say the answer on the PC's speakers
 
 
+class SyncItem(BaseModel):
+    lid: str = Field(max_length=40)                # the phone's own id for a reminder the PC has not seen yet
+    text: str = Field(max_length=200)
+    due: float                                     # epoch seconds
+    fired: bool = False                            # the phone already announced it
+
+
+class SyncRequest(BaseModel):
+    created: list[SyncItem] = Field(default=[], max_length=50)
+    deleted: list[str] = Field(default=[], max_length=100, description="PC ids the phone cancelled")
+    fired: list[str] = Field(default=[], max_length=100, description="PC ids the phone already announced")
+
+
 def wall_line(ev: dict) -> str:
     """What the phone is told when an answer changed the wall."""
     kind = ev.get("type")
@@ -301,9 +314,10 @@ def wall_line(ev: dict) -> str:
 
 def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcast: Callable[[dict], None],
               is_locked: Callable[[], bool] = lambda: False, events: "Events | None" = None,
-              on_events_connect: Callable[[], None] | None = None, apk: Path | None = None) -> FastAPI:
+              on_events_connect: Callable[[], None] | None = None, apk: Path | None = None, reminder_store=None) -> FastAPI:
     events = events if events is not None else Events()
     apk = apk or APK_FILE
+    saved = reminder_store or reminders_mod.reminders
     app = FastAPI(title="JARVIS phone", docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.middleware("http")
@@ -365,6 +379,29 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
     def ping(authorization: str | None = Header(default=None)):
         bearer(authorization)
         return {"ok": True, "locked": is_locked()}
+
+    @app.post("/reminders/sync")
+    def reminders_sync(req: SyncRequest, authorization: str | None = Header(default=None)):
+        """Brings the phone's reminders and the PC's into line in one step: the phone says what it made, cancelled or already announced since
+        last time, and gets back everything that is still waiting, so it can set its own alarms (they ring even when the PC is off)."""
+        bearer(authorization)
+        now = time.time()
+        made = []
+        for c in req.created:
+            try:
+                if not now - reminders_mod.MAX_AHEAD_S < c.due < now + reminders_mod.MAX_AHEAD_S:
+                    raise reminders_mod.ReminderError("time out of range")
+                entry = saved.add(c.text, c.due)
+                if c.fired:
+                    saved.mark_done([entry["id"]])        # the phone rang it already: the PC must not announce it again later
+                made.append({"lid": c.lid, "id": entry["id"]})
+            except reminders_mod.ReminderError:
+                made.append({"lid": c.lid, "id": None})
+        saved.cancel_ids(req.deleted)
+        saved.mark_done(req.fired)
+        if req.created or req.deleted or req.fired:
+            audit.record("phone", f"reminders synced: {len(req.created)} new, {len(req.deleted)} cancelled, {len(req.fired)} rung")
+        return {"reminders": [{"id": r["id"], "text": r["text"], "due": r["due"]} for r in saved.open()], "created": made}
 
     @app.get("/events")
     async def event_stream(authorization: str | None = Header(default=None)):
@@ -452,6 +489,7 @@ class PhoneService:
         self.port = 0
         self.tls = True
         self.events = Events()
+        self.reminder_store = None
 
     def publish(self, event: dict) -> int:
         return self.events.publish(event)
@@ -468,7 +506,7 @@ class PhoneService:
             if tls:
                 cert, key = ensure_cert(self.ip)
                 kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
-            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk)
+            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store)
             self.server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False, **kwargs))
         except Exception as e:  # noqa: BLE001 - a phone door that can't start must never stop JARVIS starting
             self.error = f"{e.__class__.__name__}: {e}"

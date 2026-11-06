@@ -21,6 +21,17 @@ def stamp(text: str) -> float:
     return datetime.strptime(text, "%Y-%m-%d %H:%M").timestamp()
 
 
+_log_patch = mock.patch.object(audit, "LOG_FILE", Path(tempfile.mkdtemp()) / "activity.log")      # what these tests do must not appear in the real activity log
+
+
+def setUpModule():
+    _log_patch.start()
+
+
+def tearDownModule():
+    _log_patch.stop()
+
+
 class Clock:
     def __init__(self, t=NOW):
         self.t = t
@@ -245,6 +256,94 @@ class PhoneEvents(unittest.TestCase):
             self.assertEqual(err.exception.code, 401)
         finally:
             service.stop()
+
+
+class Sync(unittest.TestCase):
+    """The phone's reminder sync (POST /reminders/sync) on a real server, with its own reminder file."""
+
+    @classmethod
+    def setUpClass(cls):
+        import socket
+        import time
+
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            cls.port = s.getsockname()[1]
+        cls.dir = Path(tempfile.mkdtemp())
+        cls.store = reminders.Reminders(cls.dir / "r.json")
+        cls.service = phone.PhoneService(phone.Phones(cls.dir / "p.json"))
+        cls.service.reminder_store = cls.store
+        cls.service.start(lambda *a, **k: iter(()), lambda e: None, lambda: False, port=cls.port, tls=False, host="127.0.0.1")
+        for _ in range(100):
+            if cls.service.server.started:
+                break
+            time.sleep(0.1)
+        cls.token, _ = cls.service.phones.pair(cls.service.phones.new_code()["code"], "t")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.service.stop()
+
+    def sync(self, body, token=None):
+        import urllib.error
+        import urllib.request
+
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/reminders/sync", data=json.dumps(body).encode(), method="POST",
+                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {token or self.token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, json.load(r)
+        except urllib.error.HTTPError as e:
+            return e.code, {}
+
+    def setUp(self):
+        self.store.cancel(everything=True)
+
+    def test_a_token_is_needed(self):
+        self.assertEqual(self.sync({"created": [], "deleted": [], "fired": []}, token="nope")[0], 401)
+
+    def test_new_cancelled_and_rung(self):
+        import time
+
+        now = time.time()
+        status, out = self.sync({"created": [{"lid": "L1", "text": "from the phone", "due": now + 600}, {"lid": "L2", "text": "rung offline", "due": now - 60, "fired": True}]})
+        self.assertEqual(status, 200)
+        ids = {m["lid"]: m["id"] for m in out["created"]}
+        self.assertTrue(ids["L1"] and ids["L2"])
+        self.assertEqual([r["text"] for r in out["reminders"]], ["from the phone"])          # the one the phone rang is not waiting on the PC
+        self.assertEqual(self.store.due(), [])
+        status, out = self.sync({"created": [], "deleted": [ids["L1"]], "fired": []})
+        self.assertEqual(out["reminders"], [])
+        a = self.store.add("on the PC", now + 3600)
+        self.assertEqual([r["text"] for r in self.sync({"created": [], "deleted": [], "fired": []})[1]["reminders"]], ["on the PC"])
+        self.sync({"created": [], "deleted": [], "fired": [a["id"]]})                          # the phone announced it: the PC will not
+        self.assertEqual(self.store.open(), [])
+
+    def test_bad_times_and_too_many_are_refused_politely(self):
+        import time
+
+        now = time.time()
+        status, out = self.sync({"created": [{"lid": "L9", "text": "far away", "due": now + 10 * 365 * 86400}, {"lid": "L8", "text": "  ", "due": now + 600}]})
+        self.assertEqual(status, 200)
+        self.assertEqual([m["id"] for m in out["created"]], [None, None])
+        self.assertEqual(self.sync({"created": [{"lid": f"x{i}", "text": "a", "due": now + 600} for i in range(51)]})[0], 422)
+        self.assertEqual(self.sync({"created": [{"lid": "x", "text": "a" * 201, "due": now + 600}]})[0], 422)
+
+
+class Ids(unittest.TestCase):
+    def test_cancel_by_exact_id_only(self):
+        st = reminders.Reminders(Path(tempfile.mkdtemp()) / "r.json", Clock())
+        a, b = st.add("one", NOW + 60), st.add("two", NOW + 120)
+        self.assertEqual([r["text"] for r in st.cancel_ids([a["id"], "nope"])], ["one"])
+        self.assertEqual([r["text"] for r in st.open()], ["two"])
+
+    def test_the_phone_push_names_the_reminder_so_it_is_not_shown_twice(self):
+        st = reminders.Reminders(Path(tempfile.mkdtemp()) / "r.json", Clock())
+        r = st.add("call Sam", NOW + 10)
+        st.now = Clock(NOW + 11)
+        seen = []
+        reminders.Courier(st, lambda e: 0, lambda e: seen.append(e) or 1).deliver_due()
+        self.assertEqual(seen[0]["rid"], r["id"])
 
 
 if __name__ == "__main__":

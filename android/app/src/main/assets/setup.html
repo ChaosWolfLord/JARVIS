@@ -24,6 +24,18 @@
     .print { font: 600 22px/1.2 Consolas, "Courier New", monospace; letter-spacing: 1px; white-space: nowrap; color: var(--white); padding: 14px 18px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.04); }
     .err { color: var(--red); min-height: 1.4em; }
     [hidden] { display: none !important; }
+    #rem { width: min(380px, 100%); text-align: left; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+    #rem h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; color: var(--white); text-align: center; }
+    #rem ul { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    #rem li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.05); }
+    #rem li .what { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--white); }
+    #rem li .when { color: rgb(var(--accent)); font-size: 13px; }
+    #rem li.empty { color: var(--dim); justify-content: center; border-style: dashed; }
+    #rem li button, #rem .quick button { background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--line); border-radius: 12px; min-height: 40px; padding: 0 12px; font-weight: 400; }
+    #rem form { display: flex; flex-direction: column; gap: 10px; }
+    #rem .quick { display: flex; flex-wrap: wrap; gap: 8px; }
+    #rem input { color-scheme: dark; }
+    #rem small { color: var(--dim); line-height: 1.45; }
   </style>
 </head>
 <body>
@@ -48,6 +60,19 @@
   <section id="offline" hidden style="display:contents">
     <p id="offline-text">Can’t reach your PC.</p>
     <div class="row"><button type="button" class="quiet" id="change">Change PC</button><button type="button" id="retry">Try again</button></div>
+  </section>
+
+  <section id="rem" hidden>
+    <h2>Reminders on this phone</h2>
+    <ul id="rem-list"></ul>
+    <form id="rem-form" autocomplete="off">
+      <input id="rem-text" maxlength="200" placeholder="Remind me to…" aria-label="Reminder text">
+      <input id="rem-when" type="datetime-local" aria-label="When">
+      <div class="quick"><button type="button" data-min="10">+10 min</button><button type="button" data-min="60">+1 hour</button><button type="button" data-tom="9">Tomorrow 9:00</button></div>
+      <button type="submit">Add reminder</button>
+      <p id="rem-msg" class="err" role="alert"></p>
+      <small>These ring on this phone even with the PC off, and are shared with the PC next time it is reachable.</small>
+    </form>
   </section>
 
   <script>
@@ -88,6 +113,54 @@
       $('print').textContent = r.print;
       show('confirm');
     };
+
+    // ---- reminders: they work here even when the PC is off ----
+    function whenText(ms) {
+      const d = new Date(ms), now = new Date();
+      const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+      const clock = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return (days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })) + ' at ' + clock;
+    }
+    function renderReminders() {
+      const ul = $('rem-list');
+      ul.textContent = '';
+      const list = JSON.parse(app.reminders());
+      if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'No reminders waiting.'; ul.append(li); return; }
+      for (const r of list) {
+        const li = document.createElement('li');
+        const what = document.createElement('div'); what.className = 'what';
+        const when = document.createElement('div'); when.className = 'when'; when.textContent = whenText(r.due);
+        what.append(when, document.createTextNode(r.text));
+        const del = document.createElement('button'); del.type = 'button'; del.textContent = '✕'; del.setAttribute('aria-label', 'Delete reminder: ' + r.text);
+        del.addEventListener('click', () => { app.deleteReminder(r.id); renderReminders(); });
+        li.append(what, del); ul.append(li);
+      }
+    }
+    function localInput(ms) { return new Date(ms - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+    if (q.get('offline')) {
+      $('rem').hidden = false;
+      renderReminders();
+      $('rem-when').value = localInput(Date.now() + 10 * 60000);
+      setTimeout(function again() { if (!document.hidden && !$('rem-text').value) app.retry(); else setTimeout(again, 20000); }, 20000);     // keep trying the PC in the background
+      for (const b of document.querySelectorAll('#rem .quick button')) {
+        b.addEventListener('click', () => {
+          if (b.dataset.min) $('rem-when').value = localInput(Date.now() + Number(b.dataset.min) * 60000);
+          else { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(Number(b.dataset.tom), 0, 0, 0); $('rem-when').value = localInput(t.getTime()); }
+        });
+      }
+      $('rem-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = $('rem-text').value.trim();
+        const ms = $('rem-when').value ? new Date($('rem-when').value).getTime() : NaN;
+        $('rem-msg').textContent = '';
+        if (!text) { $('rem-msg').textContent = 'What should I remind you about?'; return; }
+        if (!Number.isFinite(ms)) { $('rem-msg').textContent = 'Pick a time.'; return; }
+        const problem = app.addReminder(text, ms);
+        if (problem) { $('rem-msg').textContent = problem; return; }
+        $('rem-text').value = ''; $('rem-when').value = '';
+        renderReminders();
+      });
+    }
 
     $('no').addEventListener('click', () => { found = null; show('find'); });
     $('yes').addEventListener('click', () => { if (found) app.trust(found.address, found.pin); });

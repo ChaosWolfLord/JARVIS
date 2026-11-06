@@ -119,6 +119,11 @@ function start() {
   setupVoice();
   listenForAlerts();
   keepAwake();
+  if (app) {
+    $('bg-row').hidden = false;
+    $('opt-bg').checked = app.backgroundAlerts();
+  }
+  syncReminders();
 }
 
 function setBusy(on) {
@@ -348,7 +353,14 @@ function chime() {
   } catch { /* no sound available */ }
 }
 
+const shownAlerts = new Set();
 function alertUser(ev) {
+  if (ev.rid) {
+    if (shownAlerts.has(ev.rid)) return;                  // the PC's push and this phone's own alarm are the same reminder
+    shownAlerts.add(ev.rid);
+    app?.heard(ev.rid);                                    // so its alarm here does not ring again
+    syncReminders();                                       // and the PC learns it was delivered
+  }
   const el = add('alert', `${ev.title}${ev.text ? `: ${ev.text}` : ''}`);
   el.addEventListener('click', () => el.remove());
   try { navigator.vibrate?.([250, 120, 250]); } catch { /* not supported */ }
@@ -398,6 +410,106 @@ async function keepAwake() {
   } catch { wake = null; }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && prefs.awake) keepAwake(); });
+
+// ---- reminders -----------------------------------------------------------------------------------------------------
+// In the app the phone keeps its own copy and sets its own alarms (they ring with the PC off); in a browser the list lives on the PC.
+// Either way, syncing sends what changed here and brings back what is waiting.
+let serverReminders = [];
+
+async function syncReminders(extra) {
+  if (!token) return null;
+  const sent = app ? app.pendingReminders() : '{"created":[],"deleted":[],"fired":[]}';
+  const body = JSON.parse(sent);
+  if (extra) { body.created.push(...(extra.created || [])); body.deleted.push(...(extra.deleted || [])); }
+  try {
+    const res = await api('/reminders/sync', { method: 'POST', body: JSON.stringify(body) });
+    if (res.status === 401) { unpair('This phone was forgotten on the PC. Pair it again.'); return null; }
+    if (!res.ok) return null;
+    const answer = await res.json();
+    serverReminders = answer.reminders || [];
+    if (app) app.applySync(sent, JSON.stringify(answer));
+    renderReminders();
+    return answer;
+  } catch {
+    renderReminders();
+    return null;                                           // the PC is off: the phone's own alarms still stand
+  }
+}
+
+function whenText(ms) {
+  const d = new Date(ms), now = new Date();
+  const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+  const clock = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return `${days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} at ${clock}`;
+}
+
+function renderReminders() {
+  const list = app ? JSON.parse(app.reminders()) : serverReminders.map((r) => ({ id: r.id, text: r.text, due: r.due * 1000 }));
+  const ul = $('rem-list');
+  ul.textContent = '';
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No reminders waiting.';
+    ul.append(li);
+    return;
+  }
+  for (const r of list) {
+    const li = document.createElement('li');
+    const what = document.createElement('div');
+    what.className = 'what';
+    const when = document.createElement('div');
+    when.className = 'when';
+    when.textContent = whenText(r.due);
+    what.append(when, document.createTextNode(r.text));
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', `Delete reminder: ${r.text}`);
+    del.addEventListener('click', async () => {
+      if (app) { app.deleteReminder(r.id); await syncReminders(); } else await syncReminders({ deleted: [r.id] });
+      renderReminders();
+    });
+    li.append(what, del);
+    ul.append(li);
+  }
+}
+
+function localInput(ms) {
+  const d = new Date(ms - new Date().getTimezoneOffset() * 60000);
+  return d.toISOString().slice(0, 16);
+}
+
+$('open-rem').addEventListener('click', () => { $('menu').hidden = true; $('rem').hidden = false; if (!$('rem-when').value) $('rem-when').value = localInput(Date.now() + 10 * 60000); renderReminders(); syncReminders(); });
+$('rem-close').addEventListener('click', () => { $('rem').hidden = true; });
+for (const b of document.querySelectorAll('#rem .quick button')) {
+  b.addEventListener('click', () => {
+    if (b.dataset.min) $('rem-when').value = localInput(Date.now() + Number(b.dataset.min) * 60000);
+    else { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(Number(b.dataset.tom), 0, 0, 0); $('rem-when').value = localInput(t.getTime()); }
+  });
+}
+$('rem-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = $('rem-text').value.trim();
+  const ms = $('rem-when').value ? new Date($('rem-when').value).getTime() : NaN;
+  $('rem-msg').textContent = '';
+  if (!text) { $('rem-msg').textContent = 'What should I remind you about?'; return; }
+  if (!Number.isFinite(ms)) { $('rem-msg').textContent = 'Pick a time.'; return; }
+  if (app) {
+    const problem = app.addReminder(text, ms);
+    if (problem) { $('rem-msg').textContent = problem; return; }
+    await syncReminders();
+  } else {
+    if (ms < Date.now() + 30000) { $('rem-msg').textContent = 'Pick a time at least a minute from now.'; return; }
+    await syncReminders({ created: [{ lid: `b${Date.now()}`, text, due: ms / 1000, fired: false }] });
+  }
+  $('rem-text').value = '';
+  $('rem-when').value = '';
+  renderReminders();
+});
+$('opt-bg').addEventListener('change', (e) => { app?.setBackgroundAlerts(e.target.checked); });
+window.__alert = (ev) => alertUser(ev);                     // the app hands over an alarm that is ringing while the page is open
+setInterval(() => { if (token && !document.hidden) syncReminders(); }, 5 * 60 * 1000);
 
 // ---- go ------------------------------------------------------------------------------------------------------------
 if (token) start(); else show('pair');

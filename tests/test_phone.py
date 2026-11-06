@@ -19,6 +19,17 @@ from server import audit, phone, runner  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 
 
+_log_patch = mock.patch.object(audit, "LOG_FILE", Path(tempfile.mkdtemp()) / "activity.log")      # what these tests do must not appear in the real activity log
+
+
+def setUpModule():
+    _log_patch.start()
+
+
+def tearDownModule():
+    _log_patch.stop()
+
+
 class Clock:
     def __init__(self):
         self.t = 1000.0
@@ -317,7 +328,7 @@ class Page(unittest.TestCase):
     def test_the_phone_door_has_no_other_routes(self):
         app = phone.build_app(phone.Phones(Path(tempfile.mkdtemp()) / "p.json"), lambda *a, **k: iter(()), lambda e: None)
         paths = sorted({r.path for r in app.routes})
-        self.assertEqual(paths, ["/", "/chat", "/events", "/jarvis.apk", "/pair", "/phone.css", "/phone.js", "/ping"])
+        self.assertEqual(paths, ["/", "/chat", "/events", "/jarvis.apk", "/pair", "/phone.css", "/phone.js", "/ping", "/reminders/sync"])
 
 
 if __name__ == "__main__":
