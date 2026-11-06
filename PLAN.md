@@ -1,29 +1,29 @@
 # JARVIS Projected AI Whiteboard: Build Plan
 
-Last updated: 2026-10-26
+Last updated: 2026-11-05
 
 ## 1. Goal
 
-A wall-projected interactive whiteboard with an AI assistant named JARVIS. You touch the wall with a finger (or any pen or stick) to draw and press buttons, and JARVIS reads the board, answers questions, cleans up sketches, and runs code. The LLM runs in the cloud. Widgets and a holographic keyboard come after the whiteboard works.
+A wall-projected interactive whiteboard with an AI assistant named JARVIS. You write on the wall with an infrared pen (or, as a free fallback, point with a finger) to draw and press buttons, and JARVIS reads the board, answers questions, cleans up sketches, and runs code. It is also a room assistant: voice, lights, music, reminders, system health, and a phone companion. The LLM runs in the cloud on free tiers.
 
-**Scope (updated 2026-10-26): the projector, an IR camera with a filter, an invisible IR "light curtain" (a line laser along the wall), and a mini PC.** The earlier IR-pen plan was dropped: a pen's LED points at the wall, away from a camera behind the user, so it was hard to see. Touch is now detected by the light curtain instead (section 4A). No pen is needed, though one could be added later as an extra. No ESP32. Improving the projector setup is a separate discussion for later.
+**Scope (updated 2026-11-05):** the projector, an IR camera with a small filter, and an IR pen, within a $150 budget for the remaining hardware (section 4). The mini PC is optional and later; everything runs on the current laptop. The light-curtain laser (4A) was designed and then parked as too costly; the pen plan came back once a pen with three fanned LEDs solved the "LED faces away from the camera" problem (4B).
 
-**Built so far (all free software, $0 spent):** the whiteboard app (pen, eraser, notes, undo, glowing UI), JARVIS chat with a free-model fallback chain, JARVIS drawing and editing the board, browser voice ("Jarvis ..."), and the fit-to-wall tool (test pattern and corner-pin). Also built (2026-10-26): the pen tracker prototype (`python -m tracker`, `run_tracker.bat`): finds the pen's light, smooths it, sends pen down/move/up to the board, and runs the 9-target calibration from the ◎ button; 14 unit tests pass and a simulated pen draws correctly end to end. Also built: the tracked point works as a pointer across the whole UI (taps, note drags, slider), a holographic on-screen keyboard (⌨ / B), and touch mode with bigger controls (☝ / T). All checked with simulated events, including under a strong corner-pin. The tracker finds any small bright spot, so a fingertip glowing in the light curtain will be tracked by the same code. Not yet built: finger-specific handling (learning and ignoring the wall's static glints, rejecting palms, optional two-finger touch), and the drift check.
+**Status:** the software side is far ahead of the hardware. Almost everything in section 10 works today with a mouse, a webcam finger tracker or a simulated pen; the pen, camera and filter still have to be bought and tested on the wall (section 8).
 
 ## 2. Fixed constraints
 
 | Item | Decision |
 |---|---|
-| Budget | $200 target, $250 hard max (includes the mini PC) |
+| Budget | **$150 or less for all remaining hardware, not counting the projector** (decided 2026-11-01; replaces the earlier $200/$250 that included a mini PC) |
 | Mode | Wall whiteboard (desk mode kept as a later config option) |
 | Projector | GooDee LED projector (likely 720p) on top of the display cabinet |
 | Throw | 8 ft 6 in to the opposite wall, about 70-80 in wide image (estimate; measure it) |
 | Orientation | Mounted upside down with "Front Ceiling" mode, so the image sits at standing height (about 2 ft 9 in to 6 ft 3 in) |
 | Mounting | **No drilling.** Everything sits on the cabinet top |
 | Vibration | A train line nearby shakes the room, so the image and camera can move |
-| Mini PC | Not bought yet. Develop on the current Windows PC first |
+| Mini PC | Not bought and not in the budget. Everything is developed and runs on the current Windows laptop; a mini PC is a later option (Test 4) |
 | LLM | Free tiers only: a chain of Gemini models and Groq models (Gemini allows about 20 requests/day per model) |
-| Borrowed gear | Friend's IR webcam for testing only, cannot be kept |
+| Borrowed gear | Friend's IR webcam (Logitech BRIO) was for testing only and cannot be kept; the Arducam replaces it |
 
 ## 3. Stability and calibration strategy (your priority order)
 
@@ -64,19 +64,21 @@ Before spending anything on stability, run the test pattern for a day. Log how m
 
 ## 4. Hardware and budget
 
-| Part | Cost (estimate) | When to buy |
+**Budget (2026-11-01): $150 or less for everything still to buy, not counting the projector.** Exact parts, links, wiring and the budget table are in **PEN_PARTS.md**; this is the summary.
+
+| Part | Cost (estimate) | Notes |
 |---|---|---|
-| IR line laser: **850 nm, 5 mW or less, 90-120 degree fan, 3 V, adjustable focus**, x1 (a second for the other top corner later). **Not yet sourced: the earlier $10-20 guess was wrong.** Found so far: certified modules cost far more (Picotronic LC850-5-3-F, 850 nm, 5 mW, 3 V, 90 degree, about EUR 176 plus VAT; Edmund Optics 850 nm 30 degree line head $174), and the cheap eBay listings found (about $38-40) were spot lasers, not line generators. A hobby-grade spot laser plus a separate line-generator lens may be the budget route | about $40-70 hobby-grade (unverified), $150-200 certified | First: it decides whether the idea works, but find a verified listing before buying |
-| Battery power and mounting for the laser: 2xAA holder with on/off switch, 2 fresh AA cells (lithium or alkaline), removable adhesive strips, foam or putty shims. No cable to the PC. Pick a laser that runs on 3 V | $8-15 | With the laser |
-| Arducam B0332 camera (OV9281, 1280x800, global shutter, 100 fps in MJPG, UVC, M12 lens, no IR-cut filter, no microphone). Also sold on Amazon as "Arducam 100fps Mono Global Shutter USB Camera, 720P OV9281 UVC", ASIN B096M5DKY6 | ~$50 (Arducam's own store, before shipping and tax) to ~$63 (RobotShop, tariffs included); Newegg resellers $99-142, avoid. Amazon price not checked | After the laser passes its first test |
-| 850 nm bandpass filter, round, about 12-25 mm, held in front of the lens | $8-20 | With the camera |
-| Rigid base plate, putty, anti-tip strap | $10-15 | With the projector setup |
-| Used mini PC (8th-gen i5, 8 GB or more, SSD, adapter included, HDMI) | $70-110 | Last |
-| **Total (one hobby-grade laser)** | **~$185-295** | Over the $250 hard max at the high end. Without the mini PC (use the current PC for now) it is about $115-185. A second laser adds $40-70 |
+| Arducam B0332 camera (OV9281, 1280x800, global shutter, 100 fps in MJPG, UVC, M12 lens, no IR-cut filter). Amazon ASIN B096M5DKY6 | $50-63 | The biggest single cost. Pick MJPG (only 10 fps in YUY2) |
+| Small 850 nm-passing filter: an HWB830 / RG830 black-glass disc, about 12 mm, **cut-on 830 nm or lower**, glued over the lens | $5-12 | **Not** the 850 nm one: its cut-on equals the LED's wavelength, so it would absorb much of the pen's light. Not the $72 filter either |
+| Pen parts: 3 x 850 nm 5 mm LEDs (60 degrees, 20 mA), 3 x 68 ohm resistors, normally-open push button, 2 x AAA holder (no switch), pen body | $20-30 | LED packs and kits cover far more than needed |
+| **Touch system total** | **about $75-105** | |
+| Microphone (optional): EMEET M0 / M0 Plus conference mic | about $50 | The laptop's own speakers and microphone already work, so this can wait |
+| Mini PC | not in the budget | Only if the laptop can't stay on the wall; develop on the laptop first |
+| Rigid base plate, putty, anti-tip strap | $10-15 | Likely from things already owned; counts toward the $150 if bought |
 
-Not included: a microphone. Voice commands need one, so use a headset or webcam mic you own, or budget $10-20. The cloud LLM costs $0 on free tiers. The projector, keyboard and mouse are already owned. The IR pen is no longer needed; cancel it if it hasn't shipped.
+Everything: about $125-155, so only the top end could pass $150. If it creeps over, skip the microphone. The cloud LLM costs $0 on free tiers. The projector, keyboard and mouse are already owned.
 
-Prices are estimates and were not all checked. The Arducam price is from the retailer page above; the laser and filter ranges are guesses because no verified cheap 850 nm line-laser listing was found (the lab-grade ones found cost EUR 140-250, far above budget). Buy a laser only from a listing that states 850 nm and the power, and check it on arrival (see 4A.5).
+Prices are estimates and were not all checked (Amazon blocks automated readers). Check each page for 4.3 stars or more and read the 1-2 star reviews before buying.
 
 ## 4B. Touch method, rethought (2026-10-26)
 
@@ -87,12 +89,14 @@ The laser turned out costlier and fiddlier than first thought (4A), so the touch
 | 1. **Camera-only finger pointing**: find the hand by skin colour and motion, take the point farthest from the arm as the fingertip, hold still about 0.8 s to tap | An ordinary colour webcam (the BRIO now; Windows also lists an old Logitech C922, which may still be owned) | A few cm; no contact sensing, shifts if the hand is held in front of the wall | **Built** (`--mode finger`) |
 | 2. Option 1 plus **knock detection**: a microphone hears the tap on the wall and fires the click exactly when the finger touches, at the position the camera shows | A microphone (the BRIO has one; a $2 contact piezo is another option) | Click timing exact; position still a few cm | Idea, not built |
 | 3. Option 1 with **hand landmarks (MediaPipe)** for a steadier fingertip and a pinch-to-click gesture | None | Better fingertip; works in the air | **Built and now the default** (`--mode finger`): MediaPipe 1.1.1 installed in the venv (it replaced opencv-python with opencv-contrib-python) and the 7.5 MB hand_landmarker.task model sits in %LOCALAPPDATA%\jarvis\models. About 14 ms per 1280x720 frame |
-| 4. **Light curtain** (section 4A): battery-powered 850 nm line laser along the wall | Laser ($40-200), Arducam camera, filter | Millimetres; true touch | Designed; laser not yet sourced |
-| 5. IR pen or retroreflective stylus | Pen, camera, filter | Millimetres | Dropped: an LED faces away from a camera behind you |
+| 4. **Light curtain** (section 4A): battery-powered 850 nm line laser along the wall | Laser ($40-200), Arducam camera, filter | Millimetres; true touch | Parked: designed, laser never sourced, too costly for the budget |
+| 5. **IR pen**: three fanned 850 nm LEDs, a push button, 2 AAA | Pen parts $20-30, Arducam camera, small 830 nm filter | Millimetres at the pen tip | **Chosen.** Software is built (tracker, calibration); parts not bought yet (PEN_PARTS.md) |
 
-Recommended path: start with 1 (free), add 2 for real click timing, and only buy into 4 if precise writing matters. For finger pointing any colour webcam works, so the Arducam, filter and laser are not needed unless option 4 is chosen.
+**Current choice (2026-11-02): option 5, the IR pen, on a $150 budget.** The earlier worry (an LED pointing at the wall, away from a camera behind you) is handled by fanning three 60 degree LEDs on the pen (about 130 degrees) and mounting the camera beside the projector. Finger mode (options 1 and 3) stays available for free with any colour webcam and is the fallback while the parts ship. The light curtain (option 4, section 4A) is parked: the laser alone would eat the budget.
 
-## 4A. Light curtain design
+## 4A. Light curtain design (parked alternative: not in the current plan)
+
+*Status 2026-11-05: the plan went back to a pen (section 4B), so none of this is being bought. It stays here in case precise bare-finger touch is wanted later; the laser budget would not fit inside $150.*
 
 A fan of invisible 850 nm light is spread into a flat sheet a few millimetres in front of the wall. Nothing glows until something enters the sheet. A fingertip that touches the wall (or comes within a few mm) scatters the light, and the camera sees a small bright spot at exactly that place. The camera can sit anywhere that sees the wall, so it stays on the cabinet with the projector.
 
@@ -141,27 +145,27 @@ Each phase has a pass condition. Don't buy the next group of parts until the cur
 - Build the rigid base. Run the test pattern through a day of trains.
 - **Pass:** the image fits on the clear wall (left of the bed) and moves less than about 1 cm during a train pass.
 
-### Test 2: Light curtain first look, with the borrowed BRIO (~$20-35)
-- Buy the line laser and its power and mount (the cheapest parts). Mount it at the top-left corner, align the sheet along the wall (section 4A), check its wavelength with the BRIO or a phone's front camera.
-- Run `run_tracker.bat --frames all --view` with a bare fingertip touching the wall near the middle of the board.
-- **Pass:** a touching fingertip shows as a clear bright dot, and a finger held 2 cm away does not. (A fail here is inconclusive because the BRIO is a weak camera; see 4A.6.)
+### Test 2: Pen and camera first look ($50-85: camera, small filter, pen parts)
+- Buy the Arducam, the small 830 nm filter and the pen parts (PEN_PARTS.md). Build the pen and check it on a phone's front camera. Fit the filter over the lens.
+- Run `run_tracker.bat --view` with the pen's button held, near the middle of the board, then run the 9-target calibration.
+- **Pass:** the pen shows as a clear bright dot at 8.5 ft, with the projector on and the blinds open, and the room's window and lamp light don't create false points. If the dot is too dim, add a fourth and fifth LED before changing anything else.
 
-### Test 3: Own IR camera and filter (~$70-85)
-- Buy the Arducam and the 850 nm filter. Mount the camera on the rigid base next to the projector, set a short exposure, and run the 9-target calibration with a finger.
-- Add the static-glint learning and palm rejection (4A.4) and the drift check.
-- **Pass:** a finger draws smooth lines with no visible lag, edges and corners of the board work, a resting palm or sleeve doesn't register, and the drift check catches a deliberate nudge of the base.
+### Test 3: Write on the wall
+- Mount the camera on the rigid base next to the projector, set a short exposure, set MJPG at 1280x800 100 fps, and calibrate.
+- Add the drift check and (if the room needs it) static-glint learning.
+- **Pass:** the pen draws smooth lines with no visible lag, edges and corners of the board work, and the drift check catches a deliberate nudge of the base.
 
-### Test 4: Buy the mini PC (~$90)
-- Move the app over and set it to start on boot.
+### Test 4: Buy the mini PC (optional, ~$90, only if the laptop can't stay on the wall)
+- The $150 budget does not include one, so this is only after everything works on the laptop. Move the app over and set it to start on boot.
 - **Pass:** the whole setup works with no laptop attached.
 
-### Test 5: Make it robust (optional, ~$10-20)
-- Add a second laser at the top-right corner if one corner's shadow or distance falloff is a problem, and two-finger touch if wanted.
-- **Pass:** a hand resting on the wall doesn't block the other hand's touches, and touches across the whole board are equally reliable.
+### Test 5: Make it robust (optional)
+- If a laser light curtain (4A) is wanted later, add the line laser here; or add a second pen, a pen holder, and a quicker "recalibrate" voice command.
+- **Pass:** touches across the whole board are equally reliable.
 
-### Test 6: Voice (~$0-20)
-- Browser voice ("Jarvis, ...") is already built. It needs a microphone on the mini PC. An offline version (wake word, Whisper, Piper) is a later upgrade for privacy.
-- **Pass:** it hears you from where you sit.
+### Test 6: Voice (about $0-50)
+- Browser voice ("Jarvis, ...") and the offline wake word already work with the laptop's microphone and speakers. A USB conference mic (EMEET M0, about $50) is optional and should be set as both the Windows speaker and microphone so echo cancellation removes JARVIS's own voice.
+- **Pass:** it hears you from where you sit and doesn't wake on its own speech.
 
 ### Later
 - Widgets, holographic keyboard, gestures, split layout (writing area on the left, display-only panels above the bed).
@@ -206,17 +210,48 @@ Mini PC
 | Battery goes flat, or the laser is left switched off | "Sheet on/off" indicator (4A.4), fresh lithium or alkaline AAs, switch within reach |
 | Free-tier request limits (about 20 a day per Gemini model) | Model fallback chain across Gemini and Groq |
 
-## 8. Next steps
+## 8. Next steps (2026-11-05)
 
-1. Order the line laser (850 nm, 5 mW or less, 90-120 degree fan), its power and mounting parts (section 4).
-2. While it ships: put the projector upside down on the cabinet in ceiling mode, set the corners with Fit to wall (J), and measure the image.
-3. When the laser arrives: Test 2 with the BRIO.
-4. If it looks promising, order the Arducam and the 850 nm filter, then do Test 3.
+Software is ahead of hardware now, so the next real progress needs parts. In order:
+
+1. **Order the touch parts** from PEN_PARTS.md (camera about $50, small 830 nm filter, pen parts $20-30). Check each Amazon page for 4.3 stars or more before buying. The microphone is optional.
+2. **While they ship:** put the projector upside down on the cabinet in ceiling mode, set the corners with Fit to wall (J), measure the image, and run the test pattern through a day of trains (section 3.4).
+3. **Build the pen** (three 850 nm LEDs fanned out, 68 ohm each, push button, 2 AAA) and check it glows on a phone's front camera.
+4. **When the camera arrives:** run Test 3 below: calibrate, write on the wall, add the drift check.
+5. **Meanwhile, pick from the ideas backlog (section 11)**: the morning briefing and scenes are the best value for the least work.
 
 ## 9. Open questions
 
 - Exact projector model (sticker on the underside)
 - Cabinet height and ceiling height
-- ~~Borrowed webcam model~~: Logitech BRIO (the 4K model with a separate IR sensor and IR light for Windows Hello). **Tested 2026-10-26.** Its IR stream is hidden from normal apps and OpenCV, and Windows only offers it when the camera is opened with *exclusive control* (shared read-only shows colour only). The `whircam` package reads it once its sharing mode is switched. Findings: 340x340 pixels, 8-bit grey, 30 fps; frames alternate between "IR light on" (wall lit, mean brightness ~80) and "IR light off" (ambient, nearly black, peak ~5 of 255). A TV remote (940 nm) was bright only in the lit frames, from reflecting the camera's own IR light, and almost invisible in the dark frames. Conclusion: the BRIO proves the software path works, but it is too low-resolution and slow and its own IR light confuses tracking, so still buy a dedicated camera. An 850 nm pen was not tested. The BRIO also has a microphone, useful for voice while it's on loan.
-- Which electronics parts you already have
+- Whether the $150 budget includes shipping and tax (not stated)
+- ~~Borrowed webcam model~~: Logitech BRIO (the 4K model with a separate IR sensor and IR light for Windows Hello). **Tested 2026-10-26.** Its IR stream is hidden from normal apps and OpenCV, and Windows only offers it when the camera is opened with *exclusive control* (shared read-only shows colour only). The `whircam` package reads it once its sharing mode is switched. Findings: 340x340 pixels, 8-bit grey, 30 fps; frames alternate between "IR light on" (wall lit, mean brightness ~80) and "IR light off" (ambient, nearly black, peak ~5 of 255). A TV remote (940 nm) was bright only in the lit frames, from reflecting the camera's own IR light, and almost invisible in the dark frames. Conclusion: the BRIO proves the software path works, but it is too low-resolution and slow and its own IR light confuses tracking, so still buy a dedicated camera. An 850 nm pen was not tested. The BRIO also has a microphone.
+- Which electronics parts you already have (battery holders, resistors, wire, a marker for the pen body)
 - Whether a stud is available for an anti-tip strap behind the cabinet
+- Phone: whether Android Chrome's speech recognition works well over the self-signed HTTPS page (built and tested in a desktop browser only, not yet on the real phone)
+
+## 10. Software built so far (2026-11-05)
+
+Everything below runs on the current Windows PC; the README has the how-to for each. 522 automated tests pass. All of it is committed to git (no remote yet).
+
+- **Board and AI:** whiteboard (pen, eraser, notes, undo, saved on the PC), chat with a free-model fallback chain, AI that reads and edits the board, long-term memory, spending/request counters, agent mode with confirm-first actions (an Allow card before anything that changes the outside world), an activity log, Calendar and Gmail drafts (Google), Discord, and MCP tool connections.
+- **Voice and personality:** browser voice with natural Edge voices, optional offline wake word, interrupting an answer, a witty personality (sarcasm level adjustable), a privacy screen with an unlock code, and typed chat commands that work like spoken ones.
+- **The room:** Govee lights (local network), YouTube Music on the Nest Hub, opening and closing apps with limits (never Settings or Control Panel), system health with safe one-click fixes, Claude Code "finished" alerts, weather, timers, news ticker, holograms and charts, show-off mode, a start-up sequence with sounds.
+- **Looks (2026-11-05):** a modern calm-glass look (default) and the original neon look as "Classic", switchable in the status menu; slow-cycling side lights; a screen saver that shows only the orb and the time.
+- **Phone (2026-11-04):** a separate small HTTPS server on the home Wi-Fi for text and voice from an Android phone: pairing with a code, no "Allow" actions from the phone, privacy screen locks it out. Phone alerts for reminders, finished timers, Claude finishing and new system problems arrive while the phone page is open (no background push: that would need an outside service).
+- **Reminders (2026-11-05):** saved on the PC, spoken with a wall note, delivered late if nobody could hear them, listed and cancelled by voice.
+- **Touch software:** the pen tracker (finds a bright IR point, smooths, calibrates with 9 targets), finger mode with MediaPipe hands, the tracked point used as a pointer across the whole interface, the holographic keyboard, touch mode, and Fit to wall. Not built yet: the drift check, wall-glint learning, palm rejection.
+- **Start with Windows:** `install_autostart.bat` / `remove_autostart.bat`; `JARVIS.bat` keeps the server running and opens the board window.
+
+## 11. Ideas backlog (nothing here is started)
+
+In rough order of value for effort:
+
+1. **Morning briefing:** the first time the screen wakes, JARVIS gives weather, today's calendar, headlines and any system alerts. All the pieces exist.
+2. **Scenes:** "movie mode" (dim the lights, calm mode, pause music), "focus mode", and so on, defined once and called by name.
+3. **To-do list on the wall:** "add milk to my list" and "what's on my list", kept as a saved checklist note.
+4. **Follow-up without repeating "Jarvis":** keep listening about ten seconds after an answer.
+5. **Real background phone notifications** through the free ntfy app. Skipped so far because reminder text would pass through an outside server; the in-page alerts already work.
+6. **CyberPi desk status light** (see "Later" in section 5). Parked until the pen works.
+7. Hands-free conversation, presence detection and gestures (need the camera), and an offline wake word plus Whisper and Piper for privacy.
+8. **Housekeeping:** add a remote for the git repo (backup off this PC), and move any remaining keys out of the project folder.
