@@ -287,7 +287,7 @@ public class MainActivity extends Activity {
         private boolean ok() { return trustedPage; }
 
         @JavascriptInterface
-        public String version() { return "1.2"; }
+        public String version() { return "1.2.1"; }
 
         /** The saved address (host:port) of the PC, or "" before setup. */
         @JavascriptInterface

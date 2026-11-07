@@ -242,6 +242,7 @@ $('input').addEventListener('keydown', (e) => {
 });
 
 // ---- settings menu -------------------------------------------------------------------------------------------------
+$('menu-close').addEventListener('click', () => { $('menu').hidden = true; $('menu-btn').setAttribute('aria-expanded', 'false'); });
 $('menu-btn').addEventListener('click', () => {
   const open = $('menu').hidden;
   $('menu').hidden = !open;
@@ -567,8 +568,7 @@ function watchForPc() {
 function startLocal() {
   show('chat');
   setState('Standalone: your PC isn’t reachable', 'bad');
-  $('opt-wall').parentElement.hidden = true;
-  $('opt-speak').parentElement.hidden = true;
+  $('set-pc').hidden = true;                                 // nothing on the PC to show things on
   $('forget').hidden = true;
   $('go-pc').hidden = false;
   $('opt-read').checked = prefs.read;
