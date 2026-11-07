@@ -6,6 +6,7 @@ const PREF_KEY = 'jarvis.phone.prefs';
 
 // Inside the JARVIS Android app, window.JarvisApp exists: the app keeps the pairing token, listens for speech and keeps the screen on.
 const app = window.JarvisApp || null;
+const LOCAL = location.protocol === 'file:';          // the copy of this page that is bundled in the app: the standalone assistant, no PC
 
 const store = {
   get(key) {
@@ -124,6 +125,7 @@ function start() {
     $('opt-bg').checked = app.backgroundAlerts();
   }
   syncReminders();
+  if (app && typeof Brain !== 'undefined') Brain.sync((path, body) => api(path, { method: 'POST', body: JSON.stringify(body) }).then((r) => (r.ok ? r.json() : null)).catch(() => null));
 }
 
 function setBusy(on) {
@@ -146,19 +148,6 @@ async function send(text) {
   setBusy(true);
   controller = new AbortController();
   try {
-    const res = await api('/chat', {
-      method: 'POST',
-      body: JSON.stringify({ message: text, history: history.slice(-20), private: privateTouched, show: prefs.wall, speak: prefs.speak }),
-      signal: controller.signal,
-    });
-    if (res.status === 401) { unpair('This phone was forgotten on the PC. Pair it again.'); return; }
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || `The PC answered ${res.status}`);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
     const handle = (ev) => {
       if (ev.type === 'text') {
         if (reply.classList.contains('dots')) { reply.classList.remove('dots'); reply.textContent = ''; }
@@ -185,15 +174,34 @@ async function send(text) {
       }
       scrollDown();
     };
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf('\n\n')) >= 0) {
-        const line = buf.slice(0, idx).trim();
-        buf = buf.slice(idx + 2);
-        if (line.startsWith('data:')) { try { handle(JSON.parse(line.slice(5))); } catch { /* a damaged line: skip it */ } }
+    if (LOCAL) {
+      app.busy(true);
+      await Brain.run(text, history, handle, controller.signal);
+      if (controller.signal.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
+    } else {
+      const res = await api('/chat', {
+        method: 'POST',
+        body: JSON.stringify({ message: text, history: history.slice(-20), private: privateTouched, show: prefs.wall, speak: prefs.speak }),
+        signal: controller.signal,
+      });
+      if (res.status === 401) { unpair('This phone was forgotten on the PC. Pair it again.'); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `The PC answered ${res.status}`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf('\n\n')) >= 0) {
+          const line = buf.slice(0, idx).trim();
+          buf = buf.slice(idx + 2);
+          if (line.startsWith('data:')) { try { handle(JSON.parse(line.slice(5))); } catch { /* a damaged line: skip it */ } }
+        }
       }
     }
   } catch (err) {
@@ -204,6 +212,7 @@ async function send(text) {
     if (reply.classList.contains('dots') || !reply.textContent) reply.remove();
     setBusy(false);
     controller = null;
+    if (LOCAL) app.busy(false);
   }
   if (full.trim() && !failed) {
     history.push({ role: 'user', content: text }, { role: 'assistant', content: full.trim() });
@@ -213,7 +222,7 @@ async function send(text) {
       speechSynthesis.speak(new SpeechSynthesisUtterance(full.trim().slice(0, 600)));
     }
   }
-  checkConnection();
+  if (!LOCAL) checkConnection();
 }
 
 $('composer').addEventListener('submit', (e) => {
@@ -417,7 +426,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && pr
 let serverReminders = [];
 
 async function syncReminders(extra) {
-  if (!token) return null;
+  if (!token || LOCAL) return null;
   const sent = app ? app.pendingReminders() : '{"created":[],"deleted":[],"fired":[]}';
   const body = JSON.parse(sent);
   if (extra) { body.created.push(...(extra.created || [])); body.deleted.push(...(extra.deleted || [])); }
@@ -511,5 +520,70 @@ $('opt-bg').addEventListener('change', (e) => { app?.setBackgroundAlerts(e.targe
 window.__alert = (ev) => alertUser(ev);                     // the app hands over an alarm that is ringing while the page is open
 setInterval(() => { if (token && !document.hidden) syncReminders(); }, 5 * 60 * 1000);
 
+// ---- the standalone assistant and the AI keys (app only) ----------------------------------------------------------
+function keysText() {
+  const n = typeof Brain === 'undefined' ? 0 : Brain.keyCount();
+  $('keys-text').textContent = n ? `AI keys on this phone: ${n} model${n === 1 ? '' : 's'} ready (${Brain.keyNames().slice(0, 3).join(', ')}${n > 3 ? ', …' : ''}).` : 'No AI keys on this phone yet, so the app cannot answer without the PC.';
+  $('keys-copy').hidden = LOCAL;
+  $('keys-clear').hidden = !n;
+  $('open-local').hidden = LOCAL || !n;
+}
+
+if (app && typeof Brain !== 'undefined') {
+  $('keys-row').hidden = false;
+  keysText();
+  let armed = null;
+  $('keys-copy').addEventListener('click', async () => {
+    const b = $('keys-copy');
+    if (!armed) {                                           // asks twice: these are your private keys
+      b.textContent = 'Tap again to copy the keys to this phone';
+      armed = setTimeout(() => { armed = null; b.textContent = 'Copy AI keys from the PC'; }, 6000);
+      return;
+    }
+    clearTimeout(armed);
+    armed = null;
+    b.textContent = 'Copying…';
+    const n = await Brain.copyKeys((path, body) => api(path, { method: 'POST', body: JSON.stringify(body) }).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+    b.textContent = 'Copy AI keys from the PC';
+    if (n < 0) add('err', 'The PC would not copy its keys (it may be switched off in JARVIS_PHONE_KEYS, or the connection failed).');
+    else add('did', n ? `${n} AI model${n === 1 ? '' : 's'} copied. The app can now answer without the PC.` : 'The PC had no usable AI keys to copy.');
+    keysText();
+  });
+  $('keys-clear').addEventListener('click', () => { app.clearKeys(); keysText(); add('did', 'AI keys removed from this phone.'); });
+  $('open-local').addEventListener('click', () => app.openLocal());
+  $('go-pc').addEventListener('click', () => app.retry());
+  $('pc-switch').addEventListener('click', () => app.retry());
+}
+
+/** On the standalone page: every half minute, is the PC back? Offer the switch (never swap in the middle of a conversation). */
+function watchForPc() {
+  setInterval(async () => {
+    if (busy || document.hidden) return;
+    const r = await Brain.ping();
+    $('pc-back').hidden = !(r && r.ok);
+  }, 30000);
+}
+
+function startLocal() {
+  show('chat');
+  setState('Standalone: your PC isn’t reachable', 'bad');
+  $('opt-wall').parentElement.hidden = true;
+  $('opt-speak').parentElement.hidden = true;
+  $('forget').hidden = true;
+  $('go-pc').hidden = false;
+  $('opt-read').checked = prefs.read;
+  $('opt-auto').checked = prefs.auto;
+  $('opt-awake').checked = prefs.awake;
+  $('bg-row').hidden = false;
+  $('opt-bg').checked = app.backgroundAlerts();
+  if (!$('log').childElementCount) {
+    add('note', Brain.keyCount() ? 'Your PC isn’t reachable, so I’m running on the phone: chat, web search, weather, reminders and timers, and what I remember about you. Lights, music and the board need the PC.' : 'No AI keys on this phone yet. Connect to the PC once and copy them (menu, AI keys), then I can answer without it.');
+  }
+  setupVoice();
+  keepAwake();
+  renderReminders();
+  watchForPc();
+}
+
 // ---- go ------------------------------------------------------------------------------------------------------------
-if (token) start(); else show('pair');
+if (LOCAL) startLocal(); else if (token) start(); else show('pair');

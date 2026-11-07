@@ -11,16 +11,9 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
 /**
  * Optional: keeps a connection to the PC's /events stream while the app is closed, so alerts (a finished timer, Claude finishing, a problem
@@ -90,30 +83,7 @@ public class AlertService extends Service {
     /** One connection: reads events until it ends. True if it connected at all. */
     private boolean listen(String address, String pin, String token) throws Exception {
         if (address.isEmpty() || pin.isEmpty()) return false;
-        final String wanted = pin;
-        TrustManager pinned = new X509TrustManager() {
-            @Override public void checkClientTrusted(X509Certificate[] c, String t) throws CertificateException { throw new CertificateException("no client certificates"); }
-
-            @Override
-            public void checkServerTrusted(X509Certificate[] chain, String t) throws CertificateException {
-                try {
-                    byte[] d = MessageDigest.getInstance("SHA-256").digest(chain[0].getPublicKey().getEncoded());
-                    StringBuilder sb = new StringBuilder();
-                    for (byte b : d) sb.append(String.format("%02x", b));
-                    if (!sb.toString().equals(wanted)) throw new CertificateException("the PC's key is not the one that was confirmed");
-                } catch (java.security.NoSuchAlgorithmException e) {
-                    throw new CertificateException(e);
-                }
-            }
-
-            @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-        };
-        SSLContext ctx = SSLContext.getInstance("TLS");
-        ctx.init(null, new TrustManager[]{pinned}, null);
-        HttpsURLConnection c = (HttpsURLConnection) new URL("https://" + address + "/events").openConnection();
-        c.setSSLSocketFactory(ctx.getSocketFactory());
-        c.setHostnameVerifier((h, s) -> true);                  // the pinned key is what identifies the PC, not its address
-        c.setConnectTimeout(8000);
+        HttpsURLConnection c = Pinned.open(address, pin, "/events");
         c.setReadTimeout(60_000);                               // the PC sends a ping every 15 seconds
         c.setRequestProperty("Authorization", "Bearer " + token);
         try {

@@ -60,6 +60,7 @@
   <section id="offline" hidden style="display:contents">
     <p id="offline-text">Can’t reach your PC.</p>
     <div class="row"><button type="button" class="quiet" id="change">Change PC</button><button type="button" id="retry">Try again</button></div>
+    <div class="row" id="local-row" hidden><button type="button" class="quiet" id="local">Use JARVIS without the PC</button></div>
   </section>
 
   <section id="rem" hidden>
@@ -165,6 +166,8 @@
     $('no').addEventListener('click', () => { found = null; show('find'); });
     $('yes').addEventListener('click', () => { if (found) app.trust(found.address, found.pin); });
     $('retry').addEventListener('click', () => app.retry());
+    if (q.get('offline') && app.keyCount() > 0) $('local-row').hidden = false;
+    $('local').addEventListener('click', () => app.openLocal());
     $('change').addEventListener('click', () => app.forgetServer());
   </script>
 </body>

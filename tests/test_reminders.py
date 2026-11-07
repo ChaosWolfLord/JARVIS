@@ -330,6 +330,85 @@ class Sync(unittest.TestCase):
         self.assertEqual(self.sync({"created": [{"lid": "x", "text": "a" * 201, "due": now + 600}]})[0], 422)
 
 
+class BrainSync(unittest.TestCase):
+    """The phone's memory sync and AI-key copy (POST /brain/sync and /keys) on a real server, with its own memory file."""
+
+    @classmethod
+    def setUpClass(cls):
+        import socket
+        import time
+        from server import store
+
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            cls.port = s.getsockname()[1]
+        cls.dir = Path(tempfile.mkdtemp())
+        cls.patches = [mock.patch.object(store, "MEMORY_FILE", cls.dir / "memory.json"), mock.patch.object(store, "UI_FILE", cls.dir / "ui.json", create=True)]
+        for p in cls.patches:
+            p.start()
+        cls.service = phone.PhoneService(phone.Phones(cls.dir / "p.json"))
+        cls.service.start(lambda *a, **k: iter(()), lambda e: None, lambda: False, port=cls.port, tls=False, host="127.0.0.1")
+        for _ in range(100):
+            if cls.service.server.started:
+                break
+            time.sleep(0.1)
+        cls.token, _ = cls.service.phones.pair(cls.service.phones.new_code()["code"], "t")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.service.stop()
+        for p in cls.patches:
+            p.stop()
+
+    def post(self, path, body, token=None):
+        import urllib.error
+        import urllib.request
+
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=json.dumps(body).encode(), method="POST",
+                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {token or self.token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, json.load(r)
+        except urllib.error.HTTPError as e:
+            return e.code, {}
+
+    def test_a_token_is_needed(self):
+        self.assertEqual(self.post("/brain/sync", {"added": [], "removed": []}, token="nope")[0], 401)
+        self.assertEqual(self.post("/keys", {}, token="nope")[0], 401)
+
+    def test_facts_go_both_ways_and_the_character_comes_back(self):
+        status, out = self.post("/brain/sync", {"added": [{"lid": "L1", "fact": "likes strong tea", "kind": "preference"}], "removed": []})
+        self.assertEqual(status, 200)
+        new_id = out["created"][0]["id"]
+        self.assertTrue(new_id)
+        self.assertIn("likes strong tea", [f["fact"] for f in out["facts"]])
+        self.assertIn("JARVIS", out["character"])
+        status, out = self.post("/brain/sync", {"added": [], "removed": [new_id]})
+        self.assertNotIn("likes strong tea", [f["fact"] for f in out["facts"]])
+
+    def test_limits_and_bad_input(self):
+        self.assertEqual(self.post("/brain/sync", {"added": [{"lid": "x", "fact": "a" * 301}], "removed": []})[0], 422)
+        self.assertEqual(self.post("/brain/sync", {"added": [{"lid": f"x{i}", "fact": "a"} for i in range(51)], "removed": []})[0], 422)
+
+    def test_the_ai_keys_are_copied_only_when_allowed_and_only_for_known_hosts(self):
+        fake = [{"provider": "gemini", "model": "m", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "key": "k" * 20}]
+        with mock.patch.object(phone, "ai_providers", return_value=fake):
+            status, out = self.post("/keys", {})
+            self.assertEqual((status, out["providers"]), (200, fake))
+            with mock.patch.dict("os.environ", {"JARVIS_PHONE_KEYS": "0"}):
+                self.assertEqual(self.post("/keys", {})[0], 403)
+
+    def test_only_hosted_ai_services_are_offered(self):
+        from server import agent
+
+        targets = [agent.Target("gemini", "g"), agent.Target("groq", "q"), agent.Target("ollama", "local")]
+        with mock.patch.object(agent, "usable", return_value=targets), mock.patch.dict("os.environ", {"GEMINI_API_KEY": "gk" * 10, "GROQ_API_KEY": "qk" * 10}):
+            offered = phone.ai_providers()
+        self.assertEqual([p["provider"] for p in offered], ["gemini", "groq"])          # a local model is never copied
+        for p in offered:
+            self.assertIn(__import__("urllib.parse").parse.urlsplit(p["base_url"]).hostname, phone.AI_HOSTS)
+
+
 class Ids(unittest.TestCase):
     def test_cancel_by_exact_id_only(self):
         st = reminders.Reminders(Path(tempfile.mkdtemp()) / "r.json", Clock())

@@ -77,6 +77,10 @@ header { display: flex; align-items: center; gap: 12px; padding: max(12px, env(s
 #rem-form .quick { display: flex; flex-wrap: wrap; gap: 8px; }
 #rem-add { background: rgb(var(--accent)); color: #0a1220; font-weight: 600; border-radius: 14px; min-height: 46px; }
 #rem .hint { margin: 14px 0 0; font-size: 13px; color: var(--dim); line-height: 1.45; }
+#pc-back { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 14px 0; padding: 10px 14px; border-radius: 14px; background: rgba(110, 231, 176, 0.12); border: 1px solid rgba(110, 231, 176, 0.4); color: var(--green); font-size: 14px; }
+#pc-back button { background: var(--green); color: #07140f; border-radius: 10px; min-height: 38px; padding: 0 12px; font-weight: 600; }
+#keys-row { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--dim); }
 #pair a { color: rgb(var(--accent)); }
 #pair small { color: var(--dim); }
 #menu button.plain { background: var(--surface); color: var(--text); border-color: var(--line); }
+#menu { max-height: 62dvh; overflow-y: auto; }

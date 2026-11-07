@@ -89,9 +89,34 @@ class Contract(unittest.TestCase):
 
     def test_the_alert_listener_only_trusts_the_pinned_key(self):
         service = (APP / "java" / "dev" / "jarvis" / "phone" / "AlertService.java").read_text("utf-8")
-        self.assertIn("the PC's key is not the one that was confirmed", service)
-        self.assertNotIn("getAcceptedIssuers() { return null", service)
+        pinned = (APP / "java" / "dev" / "jarvis" / "phone" / "Pinned.java").read_text("utf-8")
+        self.assertIn("Pinned.open(", service)                          # it uses the one pinned connection, not its own trust rules
+        self.assertIn("the PC's key is not the one that was confirmed", pinned)
+        self.assertNotIn("TrustManager", service)
         self.assertIn('getBoolean("alerts", false)', service)         # it stops itself when the setting is off
+
+    def test_the_ai_keys_stay_in_the_app(self):
+        net = (APP / "java" / "dev" / "jarvis" / "phone" / "Net.java").read_text("utf-8")
+        for host in ("generativelanguage.googleapis.com", "api.groq.com", "openrouter.ai"):
+            self.assertIn(host, net)
+        self.assertIn("!known || !base.startsWith(\"https://\")", net)                  # keys are only accepted for the known AI services
+        bridge = JAVA[JAVA.index("private final class Bridge"):]
+        names = bridge_methods()
+        for leaky in ("getKeys", "keys", "readKeys", "getKey"):
+            self.assertNotIn(leaky, names)
+        self.assertIn("!onBundledPage()", bridge)                                            # only the PC's own page may hand over keys
+        self.assertNotIn('"key"', JAVA)                                                     # the keys are never read out in the activity
+
+    def test_the_assistant_cannot_reach_the_home_network(self):
+        net = (APP / "java" / "dev" / "jarvis" / "phone" / "Net.java").read_text("utf-8")
+        for needle in ("isSiteLocalAddress", "isLoopbackAddress", "isLinkLocalAddress", 'equals(u.getProtocol())', "setInstanceFollowRedirects(false)"):
+            self.assertIn(needle, net)
+
+    def test_the_chat_page_is_bundled_from_the_same_source_as_the_pcs(self):
+        gradle = (ROOT / "android" / "app" / "build.gradle.kts").read_text("utf-8")
+        self.assertIn('from("../../web/phone")', gradle)
+        self.assertIn("LOCAL = \"file:///android_asset/phone/phone.html\"", JAVA)
+        self.assertIn("Net.keyCount(MainActivity.this) > 0) web.loadUrl(LOCAL)", JAVA)    # unreachable PC -> standalone page, when the keys are here
 
     def test_the_setup_page_and_the_app_agree_on_the_probe(self):
         self.assertIn("window.onProbe&&window.onProbe(", JAVA)

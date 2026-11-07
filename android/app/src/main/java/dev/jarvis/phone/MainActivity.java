@@ -45,6 +45,8 @@ import javax.net.ssl.X509TrustManager;
  */
 public class MainActivity extends Activity {
     static final String SETUP = "file:///android_asset/setup.html";
+    static final String LOCAL = "file:///android_asset/phone/phone.html";      // the same chat page, bundled in the app, for use without the PC
+    private final java.util.concurrent.ExecutorService network = java.util.concurrent.Executors.newFixedThreadPool(3);
     static final int MIC_REQUEST = 7;
     static final Pattern ADDRESS = Pattern.compile("^[A-Za-z0-9.\\-]{1,100}(:\\d{1,5})?$");
     static final Pattern HEX64 = Pattern.compile("^[0-9a-f]{64}$");
@@ -57,6 +59,7 @@ public class MainActivity extends Activity {
     private static WeakReference<MainActivity> visible = new WeakReference<>(null);   // the activity on screen, if any (alarms hand it the reminder to show too)
 
     static final int NOTIFY_REQUEST = 8;
+    private volatile boolean chatInProgress = false;        // set by the standalone page while it is talking, so reopening the app does not interrupt it
 
     /** An alert or a ringing reminder, for the page to show too when the app is open. */
     static void deliver(String eventJson) {
@@ -102,7 +105,7 @@ public class MainActivity extends Activity {
         super.onResume();
         visible = new WeakReference<>(this);
         String shown = web.getUrl();
-        if (shown != null && shown.startsWith(SETUP) && shown.contains("offline=1") && !address().isEmpty()) load();      // coming back to the app: try the PC again
+        if (shown != null && !address().isEmpty() && ((shown.startsWith(SETUP) && shown.contains("offline=1")) || shown.startsWith(LOCAL)) && !chatInProgress) load();      // coming back to the app: try the PC again
     }
 
     @Override
@@ -133,6 +136,15 @@ public class MainActivity extends Activity {
     // ---- what to show -----------------------------------------------------------------------------------------------
     private String address() { return prefs.getString("address", ""); }
 
+    private volatile boolean bundled = false;                // is the page on screen one that came inside the app (not the PC's page)?
+
+    private boolean onBundledPage() { return bundled; }
+
+    private void emitNet(String id, String json) {
+        final String js = "window.__net&&window.__net(" + JSONObject.quote(id) + "," + JSONObject.quote(json) + ")";
+        runOnUiThread(() -> web.evaluateJavascript(js, null));
+    }
+
     private String pin() { return prefs.getString("pin", ""); }
 
     private void load() {
@@ -142,7 +154,7 @@ public class MainActivity extends Activity {
 
     private boolean ours(String url) {
         if (url == null) return false;
-        if (url.equals(SETUP) || url.startsWith(SETUP + "?")) return true;
+        if (url.equals(SETUP) || url.startsWith(SETUP + "?") || url.equals(LOCAL) || url.startsWith(LOCAL + "?")) return true;
         Uri u = Uri.parse(url);
         String a = address();
         if (a.isEmpty() || !"https".equals(u.getScheme())) return false;
@@ -166,6 +178,7 @@ public class MainActivity extends Activity {
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             trustedPage = ours(url);
+            bundled = url != null && url.startsWith("file:");
         }
 
         @Override
@@ -189,7 +202,8 @@ public class MainActivity extends Activity {
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             if (request.isForMainFrame() && !request.getUrl().toString().startsWith("file:")) {
                 String why = error.getDescription() == null ? "" : error.getDescription().toString();
-                web.loadUrl(SETUP + "?offline=1&address=" + Uri.encode(address()) + "&why=" + Uri.encode(why));
+                if (Net.keyCount(MainActivity.this) > 0) web.loadUrl(LOCAL);      // away from home or the PC is off: the standalone assistant
+                else web.loadUrl(SETUP + "?offline=1&address=" + Uri.encode(address()) + "&why=" + Uri.encode(why));
             }
         }
     }
@@ -273,7 +287,7 @@ public class MainActivity extends Activity {
         private boolean ok() { return trustedPage; }
 
         @JavascriptInterface
-        public String version() { return "1.1"; }
+        public String version() { return "1.2"; }
 
         /** The saved address (host:port) of the PC, or "" before setup. */
         @JavascriptInterface
@@ -366,6 +380,79 @@ public class MainActivity extends Activity {
                 }
             });
         }
+
+        // ---- the standalone assistant: storage, AI keys, network (the page never sees the keys) ----
+        private boolean kvName(String name) { return "facts".equals(name) || "brain".equals(name); }
+
+        @JavascriptInterface
+        public String kvGet(String name) { return ok() && kvName(name) ? prefs.getString("kv_" + name, "") : ""; }
+
+        @JavascriptInterface
+        public void kvSet(String name, String value) {
+            if (ok() && kvName(name) && value != null && value.length() <= 400_000) prefs.edit().putString("kv_" + name, value).apply();
+        }
+
+        @JavascriptInterface
+        public int keyCount() { return ok() ? Net.keyCount(MainActivity.this) : 0; }
+
+        /** Which models are ready, as JSON, never their keys. */
+        @JavascriptInterface
+        public String keyNames() { return ok() ? Net.modelNames(MainActivity.this) : "[]"; }
+
+        /** The keys from the PC (JSON list). Only accepted from the PC's own page, never from the bundled pages. */
+        @JavascriptInterface
+        public int importKeys(String json) {
+            return ok() && json != null && !onBundledPage() ? Net.importKeys(MainActivity.this, json) : 0;
+        }
+
+        @JavascriptInterface
+        public void clearKeys() {
+            if (ok()) Net.clearKeys(MainActivity.this);
+        }
+
+        /** One AI request. The answer comes back to window.__net(id, json). */
+        @JavascriptInterface
+        public void llm(String id, String requestJson) {
+            if (!ok() || id == null || requestJson == null || requestJson.length() > 300_000) return;
+            network.execute(() -> emitNet(id, Net.llm(MainActivity.this, requestJson)));
+        }
+
+        /** Reads a public web page for the assistant. The answer comes back to window.__net(id, json). */
+        @JavascriptInterface
+        public void web(String id, String url) {
+            if (!ok() || id == null || url == null || url.length() > 2000) return;
+            network.execute(() -> emitNet(id, Net.web(url)));
+        }
+
+        /** Is the PC reachable right now (with its pinned key)? Answer: window.__net(id, {ok}). */
+        @JavascriptInterface
+        public void pcPing(String id) {
+            if (!ok() || id == null) return;
+            final String a = MainActivity.this.address(), p = pin();
+            network.execute(() -> {
+                boolean up = false;
+                if (!a.isEmpty() && !p.isEmpty()) {
+                    try {
+                        javax.net.ssl.HttpsURLConnection c = Pinned.open(a, p, "/ping");
+                        c.setConnectTimeout(4000);
+                        c.setReadTimeout(4000);
+                        int code = c.getResponseCode();                          // 401 is fine: it just means "not signed in"
+                        up = code == 200 || code == 401;
+                        c.disconnect();
+                    } catch (Exception ignored) { /* not reachable */ }
+                }
+                emitNet(id, up ? "{\"ok\":true}" : "{\"ok\":false}");
+            });
+        }
+
+        /** Open the bundled assistant page (works without the PC; needs the AI keys). */
+        @JavascriptInterface
+        public void openLocal() {
+            if (ok() && Net.keyCount(MainActivity.this) > 0) runOnUiThread(() -> web.loadUrl(LOCAL));
+        }
+
+        @JavascriptInterface
+        public void busy(boolean on) { chatInProgress = on; }
 
         // ---- reminders and alerts ----
         /** The waiting reminders as JSON: [{id, text, due(ms), pc}]. */

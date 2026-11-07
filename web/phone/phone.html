@@ -34,9 +34,17 @@
       <label><input type="checkbox" id="opt-awake"> Keep the screen on (so alerts reach me; uses battery)</label>
       <label id="bg-row" hidden><input type="checkbox" id="opt-bg"> Alerts when the app is closed (keeps a small notification)</label>
       <button id="open-rem" type="button" class="plain">Reminders…</button>
+      <div id="keys-row" hidden>
+        <span id="keys-text"></span>
+        <button id="keys-copy" type="button" class="plain" hidden>Copy AI keys from the PC</button>
+        <button id="keys-clear" type="button" class="plain" hidden>Remove AI keys</button>
+      </div>
+      <button id="open-local" type="button" class="plain" hidden>Use JARVIS without the PC</button>
+      <button id="go-pc" type="button" class="plain" hidden>Connect to the PC</button>
       <button id="change-pc" type="button" class="plain" hidden>Change PC</button>
       <button id="forget" type="button">Forget this phone</button>
     </div>
+    <div id="pc-back" hidden><span>Your PC is reachable again.</span><button type="button" id="pc-switch">Switch to the full JARVIS</button></div>
     <section id="rem" hidden>
       <header><b>Reminders</b><button type="button" id="rem-close" class="icon" aria-label="Close">✕</button></header>
       <ul id="rem-list"></ul>
@@ -57,6 +65,7 @@
     </form>
     <p id="hint" hidden></p>
   </div>
+  <script src="brain.js"></script>
   <script src="phone.js"></script>
 </body>
 </html>

@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+from urllib.parse import urlsplit
 import hmac
 import io
 import ipaddress
@@ -38,7 +39,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import audit, reminders as reminders_mod, runner, store
+from . import audit, persona, reminders as reminders_mod, runner, store
 
 WEB_PHONE = Path(__file__).resolve().parent.parent / "web" / "phone"
 PHONES_FILE = store.STATE / "phones.json"
@@ -298,6 +299,50 @@ class SyncRequest(BaseModel):
     fired: list[str] = Field(default=[], max_length=100, description="PC ids the phone already announced")
 
 
+class FactIn(BaseModel):
+    lid: str = Field(max_length=40)
+    fact: str = Field(min_length=1, max_length=300)
+    kind: str = Field(default="fact", max_length=20)
+    pinned: bool = False
+
+
+class BrainSync(BaseModel):
+    added: list[FactIn] = Field(default=[], max_length=50)
+    removed: list[int] = Field(default=[], max_length=100)
+
+
+# Hosts the phone may send AI requests to with the keys it is given (the same services the PC uses).
+AI_HOSTS = ("generativelanguage.googleapis.com", "api.groq.com", "openrouter.ai")
+MAX_PHONE_MODELS = 8
+
+
+def ai_providers() -> list[dict]:
+    """The AI services the PC can use right now, with their keys, for the phone's standalone assistant (only real hosted services, never a local model)."""
+    from . import agent
+    out = []
+    for t in agent.usable():
+        cfg = agent.PROVIDERS.get(t.provider, {})
+        key = os.getenv(cfg.get("key_env") or "")
+        host = urlsplit(cfg.get("base_url", "")).hostname
+        if key and host in AI_HOSTS:
+            out.append({"provider": t.provider, "model": t.model, "base_url": cfg["base_url"], "key": key})
+        if len(out) >= MAX_PHONE_MODELS:
+            break
+    return out
+
+
+def weather_place() -> dict | None:
+    """The city chosen on the PC's weather card, if any: {name, lat, lon, units}."""
+    try:
+        saved = json.loads(store.ui_settings().get("jarvis.weather") or "{}")
+        place = saved.get("place") or {}
+        if place.get("lat") is not None and place.get("lon") is not None:
+            return {"name": str(place.get("name", ""))[:60], "lat": float(place["lat"]), "lon": float(place["lon"]), "units": "c" if saved.get("units") == "c" else "f"}
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 def wall_line(ev: dict) -> str:
     """What the phone is told when an answer changed the wall."""
     kind = ev.get("type")
@@ -344,6 +389,10 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
     @app.get("/phone.js")
     def script():
         return page("phone.js", "text/javascript; charset=utf-8")
+
+    @app.get("/brain.js")
+    def brain_script():
+        return page("brain.js", "text/javascript; charset=utf-8")
 
     @app.get("/phone.css")
     def style():
@@ -402,6 +451,36 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
         if req.created or req.deleted or req.fired:
             audit.record("phone", f"reminders synced: {len(req.created)} new, {len(req.deleted)} cancelled, {len(req.fired)} rung")
         return {"reminders": [{"id": r["id"], "text": r["text"], "due": r["due"]} for r in saved.open()], "created": made}
+
+    @app.post("/brain/sync")
+    def brain_sync(req: BrainSync, authorization: str | None = Header(default=None)):
+        """For the phone's standalone assistant: takes the facts it learned or dropped while away, and returns everything it needs to
+        sound like JARVIS without the PC: the facts, the character (how sarcastic, what to call you) and the weather city."""
+        bearer(authorization)
+        made = []
+        for f in req.added:
+            try:
+                made.append({"lid": f.lid, "id": store.add_fact(f.fact.strip(), f.kind, f.pinned)["id"]})
+            except Exception:  # noqa: BLE001 - one bad fact must not lose the rest
+                made.append({"lid": f.lid, "id": None})
+        for fact_id in req.removed:
+            store.remove_fact(fact_id)
+        if req.added or req.removed:
+            audit.record("phone", f"memory synced: {len(req.added)} new, {len(req.removed)} forgotten")
+        facts = sorted(store.list_facts(), key=lambda f: (not f["pinned"], -f["id"]))[:300]
+        return {"facts": [{"id": f["id"], "fact": f["fact"], "kind": f["kind"], "pinned": f["pinned"]} for f in facts], "created": made,
+                "character": persona.character(), "weather": weather_place()}
+
+    @app.post("/keys")
+    def keys(authorization: str | None = Header(default=None)):
+        """Copies the AI service keys to the phone, so its standalone assistant works away from home. Needs the phone to be paired and
+        JARVIS_PHONE_KEYS not set to 0. Logged every time."""
+        bearer(authorization)
+        if os.getenv("JARVIS_PHONE_KEYS", "1") == "0":
+            raise HTTPException(403, "Copying the AI keys to phones is switched off on the PC (JARVIS_PHONE_KEYS=0).")
+        providers = ai_providers()
+        audit.record("phone", f"AI keys copied to the phone ({len(providers)} models)")
+        return {"providers": providers}
 
     @app.get("/events")
     async def event_stream(authorization: str | None = Header(default=None)):
