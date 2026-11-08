@@ -111,6 +111,16 @@ class Addresses(unittest.TestCase):
             self.assertFalse(phone.private_address(bad), repr(bad))
 
 
+class MovingPc(unittest.TestCase):
+    def test_the_address_shown_follows_the_pc_to_another_wifi(self):
+        service = phone.PhoneService(phone.Phones(Path(tempfile.mkdtemp()) / "phones.json"))
+        service.ip, service.port, service.tls = "192.168.1.236", 8443, True
+        with mock.patch.object(phone, "lan_ip", return_value="192.168.86.120"):
+            self.assertEqual(service.url, "https://192.168.86.120:8443")
+        with mock.patch.object(phone, "lan_ip", return_value="127.0.0.1"):          # no network at the moment: the last known address
+            self.assertEqual(service.url, "https://192.168.1.236:8443")
+
+
 class Certificate(unittest.TestCase):
     def test_made_once_reused_and_remade_for_a_new_address(self):
         d = Path(tempfile.mkdtemp())

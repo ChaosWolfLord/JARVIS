@@ -575,7 +575,12 @@ class PhoneService:
 
     @property
     def url(self) -> str:
-        return f"{'https' if self.tls else 'http'}://{self.ip}:{self.port}" if self.port else ""
+        if not self.port:
+            return ""
+        ip = lan_ip()                                   # asked every time: the PC's address changes when it joins another Wi-Fi
+        if ip.startswith("127."):
+            ip = self.ip or ip
+        return f"{'https' if self.tls else 'http'}://{ip}:{self.port}"
 
     def start(self, chat_turn, broadcast, is_locked, port: int = 8443, tls: bool = True, host: str = "0.0.0.0", on_events_connect=None, apk: Path | None = None) -> None:
         import uvicorn
