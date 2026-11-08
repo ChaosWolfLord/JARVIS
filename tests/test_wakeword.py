@@ -17,20 +17,63 @@ from server import wakeword  # noqa: E402
 
 
 class DetectorLogic(unittest.TestCase):
-    def test_hears_the_name_and_its_usual_mishearings(self):
-        for text in ("jarvis", "Jarvis", "hey jarvis what time is it", "ok jarvas", "jarvus", "jervis", "jervis jarvis jervis"):
-            self.assertTrue(wakeword.Detector().hears(text, 100.0), text)
+    def feed(self, detector, updates, final_last=False):
+        """Gives the detector one update per quarter second; returns the update numbers that woke it."""
+        woke = []
+        for i, text in enumerate(updates):
+            if detector.hears(text, 100.0 + i * 0.25, final=(final_last and i == len(updates) - 1)):
+                woke.append(i)
+        return woke
+
+    def test_the_name_has_to_stay_the_answer_for_a_moment(self):
+        d = wakeword.Detector(need=3, need_ambiguous=5)
+        self.assertEqual(self.feed(d, ["", "jarvis", "jarvis", "jarvis", "jarvis what"]), [3])      # woke on the third update in a row
+
+    def test_a_passing_look_alike_does_not_wake_it(self):
+        # a real run: while someone said "...Gervais..." the recognizer flickered through "jervis" for one update
+        d = wakeword.Detector(need=3, need_ambiguous=5)
+        self.assertEqual(self.feed(d, ["[unk]", "[unk] jervis", "[unk] gervais", "[unk]", "[unk] services"]), [])
+        self.assertEqual(self.feed(wakeword.Detector(need=3, need_ambiguous=5), ["jarvis", "[unk]", "jarvis", "[unk]", "jarvis"]), [])
+
+    def test_a_confident_final_answer_wakes_it_at_once(self):
+        d = wakeword.Detector(need=3, need_ambiguous=5)
+        self.assertTrue(d.hears("jarvis", 100.0, final=True, conf=1.0))
+        self.assertFalse(wakeword.Detector().hears("jarvis", 100.0, final=True, conf=0.5))        # not sure: it has to keep hearing it
+        self.assertFalse(wakeword.Detector().hears("jervis", 100.0, final=True, conf=1.0))        # "jervis" is also "Gervais": needs longer
+
+    def test_hey_and_other_words_before_the_name(self):
+        for first in ("hey", "[unk]", "gervais", "harvest"):
+            d = wakeword.Detector(need=2, need_ambiguous=3)
+            self.assertEqual(self.feed(d, [f"{first} jarvis"] * 3), [1], first)
+        d = wakeword.Detector(need=2, need_ambiguous=3)
+        self.assertEqual(self.feed(d, ["so then jarvis"] * 4), [])                                # the name in the middle of a sentence is not a call
+
+    def test_the_names_other_accents_count_when_they_last(self):
+        for word in ("jarvas", "jarvus", "jarves"):
+            self.assertEqual(self.feed(wakeword.Detector(need=3, need_ambiguous=5), [word] * 4), [2], word)
+        self.assertEqual(self.feed(wakeword.Detector(need=3, need_ambiguous=5), ["jervis"] * 4), [])
+        self.assertEqual(self.feed(wakeword.Detector(need=3, need_ambiguous=5), ["jervis"] * 6), [4])
 
     def test_ignores_other_words(self):
-        for text in ("", "service", "jar", "travis", "the jarvises", "nothing at all"):
-            self.assertFalse(wakeword.Detector().hears(text, 100.0), text)
+        for text in ("", "service", "jar", "travis", "the jarvises", "nothing at all", "[unk]"):
+            self.assertEqual(self.feed(wakeword.Detector(need=1, need_ambiguous=1), [text] * 6), [], text)
 
-    def test_wakes_once_per_cooldown(self):
-        d = wakeword.Detector(cooldown=3.0)
+    def test_wakes_once_per_utterance_and_again_after_the_cooldown(self):
+        d = wakeword.Detector(cooldown=4.0, need=1, need_ambiguous=1)
         self.assertTrue(d.hears("jarvis", 10.0))
-        self.assertFalse(d.hears("jarvis", 11.0))      # the same word seen again as the sentence finishes
-        self.assertFalse(d.hears("jarvis", 12.9))
-        self.assertTrue(d.hears("jarvis", 13.1))
+        self.assertFalse(d.hears("jarvis what", 10.25))        # the same utterance carrying on
+        self.assertFalse(d.hears("jarvis what time", 20.0))    # still the same utterance, even long after: it has to end first
+        self.assertFalse(d.hears("", 20.25))                   # ...which it does...
+        self.assertTrue(d.hears("jarvis", 20.5))               # ...and then a new "Jarvis" works
+        self.assertFalse(d.hears("", 21.0))
+        self.assertFalse(d.hears("jarvis", 22.0))              # inside the cooldown
+        self.assertTrue(d.hears("jarvis", 25.0))
+
+    def test_the_sensitivity_setting(self):
+        for level, expected in (("high", (2, 3)), ("normal", (3, 5)), ("low", (4, 7)), ("nonsense", (3, 5)), ("HIGH", (2, 3))):
+            with mock.patch.dict("os.environ", {"JARVIS_WAKEWORD_SENSITIVITY": level}):
+                d = wakeword.Detector()
+                self.assertEqual((d.need, d.need_ambiguous), expected, level)
 
 
 class Grammar(unittest.TestCase):
@@ -125,21 +168,26 @@ class Listening(unittest.TestCase):
         return heard, w
 
     def test_calls_back_when_the_name_is_heard_once_not_repeatedly(self):
-        heard, w = self.run_listener(["", "jarvis", "jarvis what", "", "", ""])
+        heard, w = self.run_listener(["", "jarvis", "jarvis", "jarvis", "jarvis what", ""])
         self.assertEqual(heard, [1])
         self.assertFalse(w.running)
 
+    def test_a_single_flicker_of_the_name_is_not_enough(self):
+        heard, w = self.run_listener(["", "jarvis", "", "jarvis", "", ""])
+        self.assertEqual(heard, [])
+        self.assertTrue(w.status()["last_text"])                       # it still shows what it heard, so you can see why it did not wake
+
     def test_the_status_tells_what_it_heard_and_when(self):
-        heard, w = self.run_listener(["", "jervis jarvis", "", "", "", ""])
+        heard, w = self.run_listener(["", "hey jarvis", "hey jarvis", "hey jarvis", "", ""])
         st = w.status()
-        self.assertEqual(heard, [1])                                   # "jervis" counts as the name
+        self.assertEqual(heard, [1])
         self.assertGreater(st["blocks"], 0)
         self.assertIn("jarvis", st["last_text"])
         self.assertGreater(st["last_wake"], 0)
         self.assertIsNotNone(st["heard_ago"])
 
     def test_a_callback_that_fails_does_not_stop_the_listener(self):
-        with mock.patch.dict(sys.modules, self.fakes(["jarvis", "", "", "", "", ""])), mock.patch.object(wakeword, "model_ready", return_value=True):
+        with mock.patch.dict(sys.modules, self.fakes(["jarvis", "jarvis", "jarvis", "", "", ""])), mock.patch.object(wakeword, "model_ready", return_value=True):
             w = wakeword.WakeWord(lambda: 1 / 0)
             w.start()
             time.sleep(0.6)

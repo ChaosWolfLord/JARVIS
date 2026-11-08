@@ -19,8 +19,8 @@ httpx = agent_tools.httpx
 
 
 class FakeLan:
-    def __init__(self, found=(), statuses=None):
-        self.found, self.status_data, self.sent, self.scans = list(found), statuses or {}, [], []
+    def __init__(self, found=(), statuses=None, up=True):
+        self.found, self.status_data, self.sent, self.scans, self.up = list(found), statuses or {}, [], [], up
 
     def scan(self, extra_ips=(), timeout=3.0):
         self.scans.append(list(extra_ips))
@@ -30,7 +30,9 @@ class FakeLan:
         self.sent.append((ip, cmd, data))
 
     def statuses(self, ips, timeout=2.0):
-        return {ip: self.status_data[ip] for ip in ips if ip in self.status_data}
+        if self.status_data:
+            return {ip: self.status_data[ip] for ip in ips if ip in self.status_data}
+        return {ip: {"onOff": 1} for ip in ips} if self.up else {}                 # the pretend lights answer unless told they are off
 
 
 def registry(lan=None, cloud=None, known=()):
@@ -351,6 +353,95 @@ class AiToolAndVoice(unittest.TestCase):
             self.assertTrue(main.voice_lights(main.SpokenLight(text="lights off"))["handled"])
             self.assertFalse(main.voice_lights(main.SpokenLight(text="what time is it"))["handled"])
             self.assertEqual(main.rename_light(main.LightName(id="id0", name="Lamp"))["lights"][0]["name"], "Lamp")
+
+
+class WhenTheLightIsOutOfReach(unittest.TestCase):
+    """UDP is fire-and-forget, so JARVIS used to say "done" to a light that was off or on another network. It now checks first."""
+
+    def test_a_light_that_does_not_answer_is_reported_not_claimed_done(self):
+        reg = registry(lan=FakeLan(up=False), known=[("Desk", "192.168.1.50")])
+        with mock.patch.object(lights, "local_addresses", return_value=["192.168.1.236"]):
+            text = reg.command(power=True)
+        self.assertTrue(text.startswith("Error: "), text)
+        self.assertIn("didn't answer at 192.168.1.50", text)
+        self.assertIn("LAN Control", text)
+        self.assertEqual(reg.lan.sent, [])                                    # nothing was sent into the void
+        self.assertFalse(reg.lights["id0"].state["reachable"])
+
+    def test_a_light_on_another_network_says_so(self):
+        reg = registry(lan=FakeLan(up=False), known=[("Desk", "192.168.86.127")])
+        with mock.patch.object(lights, "local_addresses", return_value=["192.168.1.236"]):
+            text = reg.command(power=False)
+        self.assertIn("different network", text)
+        self.assertIn("192.168.86.127", text)
+        self.assertIn("192.168.1.x", text)
+
+    def test_the_spoken_reply_carries_the_reason_instead_of_a_cheerful_done(self):
+        reg = registry(lan=FakeLan(up=False), known=[("Desk", "192.168.86.127")])
+        with mock.patch.object(lights, "local_addresses", return_value=["192.168.1.236"]), mock.patch.object(lights.persona, "level", return_value=0):
+            out = lights.handle_voice("turn on the lights", reg)
+        self.assertTrue(out["handled"])
+        self.assertFalse(out["ok"])
+        self.assertIn("different network", out["text"])
+
+    def test_the_ai_tool_gets_an_error_it_can_explain(self):
+        reg = registry(lan=FakeLan(up=False), known=[("Desk", "192.168.86.127")])
+        with mock.patch.object(lights, "local_addresses", return_value=["192.168.1.236"]):
+            self.assertTrue(lights.tool({"action": "set", "power": True}, reg).startswith("Error: "))
+
+    def test_a_light_that_moved_is_found_again(self):
+        lan = FakeLan(found=[{"device": "id0", "ip": "192.168.1.77", "sku": "H6001"}], statuses={"192.168.1.77": {"onOff": 0}})
+        reg = registry(lan=lan, known=[("Desk", "192.168.1.50")])
+        text = reg.command(power=True)
+        self.assertIn("on", text)
+        self.assertEqual(reg.lights["id0"].ip, "192.168.1.77")
+        self.assertEqual(lan.sent[0][0], "192.168.1.77")
+
+    def test_an_answering_light_is_not_asked_again_every_time(self):
+        class Counting(FakeLan):
+            asked = 0
+
+            def statuses(self, ips, timeout=2.0):
+                type(self).asked += 1
+                return super().statuses(ips, timeout)
+
+        reg = registry(lan=Counting(), known=[("Desk", "192.168.1.50")])
+        reg.command(power=True)
+        reg.command(brightness=40)
+        self.assertEqual(Counting.asked, 1)
+
+    def test_the_cloud_is_the_fall_back_when_the_light_is_out_of_reach_locally(self):
+        class Cloud:
+            def __init__(self):
+                self.calls = []
+
+            def control(self, sku, device, cap, instance, value):
+                self.calls.append((cap, value))
+
+        cloud = Cloud()
+        reg = registry(lan=FakeLan(up=False), cloud=cloud, known=[("Desk", "192.168.86.127")])
+        reg.lights["id0"].cloud = True
+        reg.command(power=True)
+        self.assertTrue(cloud.calls)
+
+
+class StatusReplies(unittest.TestCase):
+    def test_statuses_stop_waiting_once_every_light_has_answered(self):
+        import time
+
+        lan = lights.Lan(sock=socket.socket, addresses=lambda: [])
+        replies = [json.dumps({"msg": {"cmd": "devStatus", "data": {"onOff": 1}}}).encode()]
+
+        class Rx:
+            def recvfrom(self, n):
+                if replies:
+                    return replies.pop(), ("10.0.0.5", 4002)
+                raise socket.timeout()
+
+        began = time.time()
+        got = lan._collect(Rx(), "devStatus", time.time() + 5, want={"10.0.0.5"})
+        self.assertEqual([g["_from"] for g in got], ["10.0.0.5"])
+        self.assertLess(time.time() - began, 1.0)                              # it did not sit out the five seconds
 
 
 if __name__ == "__main__":

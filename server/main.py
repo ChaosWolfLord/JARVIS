@@ -21,6 +21,7 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 
 @contextlib.asynccontextmanager
 async def lifespan(_app):
+    store.load_env()                # settings from .env even when the server is started without the supervisor (a variable already set is kept)
     mcp_client.manager.start()      # connect to the MCP servers in data/mcp.json in the background
     notify_mod.token()              # make sure the shared secret exists, so programs like the Claude Code hook can find it
     wake.loop = asyncio.get_running_loop()

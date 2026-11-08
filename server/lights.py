@@ -101,7 +101,9 @@ class Lan:
         return rx
 
     def _collect(self, rx, cmd: str, until: float, want=None) -> list[dict]:
+        """Answers to `cmd` until `until`. `want` is one address (stop when it has answered) or a set of them (stop when all have)."""
         out = []
+        waiting = set(want) if isinstance(want, (set, frozenset, list, tuple)) else None
         while time.time() < until:
             try:
                 data, addr = rx.recvfrom(4096)
@@ -117,7 +119,11 @@ class Lan:
                 continue
             if msg.get("cmd") == cmd and isinstance(msg.get("data"), dict):
                 out.append({**msg["data"], "_from": addr[0]})
-                if want and addr[0] == want:
+                if waiting is not None:
+                    waiting.discard(addr[0])
+                    if not waiting:
+                        break
+                elif want and addr[0] == want:
                     break
         return out
 
@@ -182,7 +188,7 @@ class Lan:
                         rx.sendto(ask, (ip, CONTROL_PORT))
                     except OSError:
                         pass
-                got = self._collect(rx, "devStatus", time.time() + timeout)
+                got = self._collect(rx, "devStatus", time.time() + timeout, want=set(ips))
             finally:
                 rx.close()
         return {g["_from"]: g for g in got if g["_from"] in ips}
@@ -389,7 +395,7 @@ class Lights:
                 self._apply(light, power, brightness, delta, rgb, kelvin)
                 done.append(light.label)
             except LightError as e:
-                failed.append(f"{light.label}: {e}")
+                failed.append(str(e) if str(e).startswith(light.label) else f"{light.label}: {e}")
         what = []
         if power is not None:
             what.append("on" if power else "off")
@@ -406,7 +412,54 @@ class Lights:
             text = (text + " " if text else "Error: ") + "Problem with " + "; ".join(failed)
         return text.strip()
 
+    def confirm_reachable(self, light: Light) -> bool:
+        """Does the light answer right now? Sending is fire-and-forget (UDP), so without this a command to a light that is off, or on another
+        network, would be reported as done. If it does not answer, one more look around the network in case it has a new address."""
+        if not light.ip:
+            return False
+        st = light.state
+        if st.get("reachable") and time.time() - st.get("checked", 0) < 45:
+            return True
+
+        def answers() -> bool:
+            try:
+                reply = self.lan.statuses([light.ip], timeout=1.2).get(light.ip)
+            except OSError:
+                reply = None
+            if reply:
+                st.update({"reachable": True, "checked": time.time()})
+                return True
+            st.update({"reachable": False})
+            return False
+
+        if answers():
+            return True
+        try:
+            found = self.lan.scan(extra_ips=[], timeout=1.8)
+        except OSError:
+            found = []
+        for d in found:
+            if str(d.get("device", "")) == light.id and d.get("ip") and d["ip"] != light.ip:
+                light.ip = d["ip"]                                   # it moved (a new address from the router)
+                self._save()
+                return answers()
+        return answers() if any(d.get("ip") == light.ip for d in found) else False
+
+    def why_unreachable(self, light: Light) -> str:
+        mine = local_addresses()
+        prefix = (light.ip or "").rsplit(".", 1)[0]
+        if mine and light.ip and not any(m.rsplit(".", 1)[0] == prefix for m in mine):
+            return (f"{light.label} is on a different network: it was last at {light.ip}, but this PC is on {mine[0].rsplit('.', 1)[0]}.x. "
+                    "The lights have to be on the same Wi-Fi as this PC.")
+        return (f"{light.label} didn't answer at {light.ip}. Is it plugged in and on this Wi-Fi? "
+                "(In the Govee app, LAN Control has to be switched on for the light.)")
+
     def _apply(self, light: Light, power, brightness, delta, rgb, kelvin) -> None:
+        if light.ip and not self.confirm_reachable(light):
+            if light.cloud and self.cloud:
+                self._apply_cloud(light, power, brightness, rgb, kelvin)
+                return
+            raise LightError(self.why_unreachable(light))
         st = light.state
         if delta is not None and brightness is None:
             brightness = int(max(1, min(100, (st.get("brightness") or 50) + delta)))
@@ -576,8 +629,13 @@ def handle_voice(text: str, registry: Lights | None = None) -> dict:
     if cmd is None:
         return {"handled": False, "text": ""}
     try:
-        reg.command(target=cmd.get("target", ""), power=cmd.get("power"), brightness=cmd.get("brightness"), delta=cmd.get("delta"),
-                    color=cmd.get("color"), kelvin=cmd.get("kelvin"))
-        return {"handled": True, "ok": True, "text": persona.light_reply(cmd)}
+        result = reg.command(target=cmd.get("target", ""), power=cmd.get("power"), brightness=cmd.get("brightness"), delta=cmd.get("delta"),
+                             color=cmd.get("color"), kelvin=cmd.get("kelvin"))
     except LightError as e:
         return {"handled": True, "ok": False, "text": persona.failure(str(e))}
+    if result.startswith("Error"):                                    # every light failed: say why, never a cheerful "done"
+        return {"handled": True, "ok": False, "text": persona.failure(result.removeprefix("Error:").replace("Problem with ", "", 1).strip())}
+    text = persona.light_reply(cmd)
+    if "Problem with " in result:                                     # some worked and some didn't
+        text += " But " + result.split("Problem with ", 1)[1].strip()
+    return {"handled": True, "ok": True, "text": text}

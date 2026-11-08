@@ -46,7 +46,20 @@ def grammar() -> str:
 
 GRAMMAR = grammar()
 NAME = re.compile(r"\b(jarvis|jarvas|jarvus|jarves|jervis)\b")      # "jervis" is how many accents come out: it counts
-COOLDOWN = 3.0   # seconds before the same word can wake it again
+NAME_WORDS = frozenset({"jarvis", "jarvas", "jarvus", "jarves", "jervis"})
+AMBIGUOUS = frozenset({"jervis"})            # also what "Gervais" sounds like, so it has to be heard for longer
+COOLDOWN = 4.0   # seconds before the same word can wake it again
+
+# How sure it has to be before it wakes. The recognizer is only allowed a handful of words, so it tends to force any speech into them; in a
+# test with 30 minutes of ordinary talk it woke about 100 times an hour on words that were not the name. The fix is to make it prove it: the
+# name has to be the first word (or the second, after "hey"), and still be the recognizer's answer on several updates in a row (each is a
+# quarter of a second), or come out as its confident final answer. Briefly passing look-alikes ("Gervais") no longer count. Set
+# JARVIS_WAKEWORD_SENSITIVITY=high if it ever seems deaf, or low if it still wakes on things you did not say.
+SENSITIVITY = {"high": (2, 3), "normal": (3, 5), "low": (4, 7)}      # updates in a row: (for the name, for the ambiguous "jervis")
+
+
+def sensitivity() -> tuple[int, int]:
+    return SENSITIVITY.get(os.getenv("JARVIS_WAKEWORD_SENSITIVITY", "normal").strip().lower(), SENSITIVITY["normal"])
 
 
 def available() -> bool:
@@ -74,18 +87,37 @@ def block_level(data: bytes) -> float:
 
 
 class Detector:
-    """Decides, from the recognizer's text, whether the name was just said (once per cooldown)."""
+    """Decides, from the recognizer's updates, whether the name was really said (once per cooldown).
 
-    def __init__(self, cooldown: float = COOLDOWN) -> None:
+    Call hears() with every update: `text` is what the recognizer thinks right now (a partial result, or a final one with final=True and
+    the confidence of its best word)."""
+
+    def __init__(self, cooldown: float = COOLDOWN, need: int | None = None, need_ambiguous: int | None = None) -> None:
+        default = sensitivity()
         self.cooldown = cooldown
+        self.need = need if need is not None else default[0]
+        self.need_ambiguous = need_ambiguous if need_ambiguous is not None else default[1]
         self.last = -1e9
+        self.streak = 0
+        self.word = ""
+        self.armed = True            # after a wake, the same utterance has to end (or change) before it can wake again
 
-    def hears(self, text: str, now: float | None = None) -> bool:
+    def hears(self, text: str, now: float | None = None, final: bool = False, conf: float = 1.0) -> bool:
         now = time.monotonic() if now is None else now
-        if not NAME.search(str(text).lower()) or now - self.last < self.cooldown:
+        words = str(text).lower().split()
+        i = 1 if len(words) > 1 and words[0] not in NAME_WORDS else 0      # one word may come first: "hey" is often heard as a look-alike
+        name = words[i] if i < len(words) else ""
+        if name not in NAME_WORDS:
+            self.streak, self.word, self.armed = 0, "", True
             return False
-        self.last = now
-        return True
+        self.streak = self.streak + 1 if name == self.word else 1
+        self.word = name
+        need = self.need_ambiguous if name in AMBIGUOUS else self.need
+        sure = self.streak >= need or (final and conf >= 0.9 and name not in AMBIGUOUS)
+        if sure and self.armed and now - self.last >= self.cooldown:
+            self.last, self.armed = now, False
+            return True
+        return False
 
 
 class WakeWord:
@@ -136,6 +168,8 @@ class WakeWord:
 
             vosk.SetLogLevel(-1)
             recognizer = vosk.KaldiRecognizer(vosk.Model(str(self.model_path)), SAMPLE_RATE, grammar())
+            if hasattr(recognizer, "SetWords"):
+                recognizer.SetWords(True)                 # final results then say how sure the recognizer is of each word
             audio: queue.Queue[bytes] = queue.Queue(maxsize=50)
 
             def capture(indata, frames, t, status):  # noqa: ARG001 - sounddevice's signature
@@ -159,13 +193,16 @@ class WakeWord:
                     self.blocks += 1
                     self.last_block = time.time()
                     self.level = 0.7 * self.level + 0.3 * block_level(data)
-                    if recognizer.AcceptWaveform(data):
-                        text = json.loads(recognizer.Result()).get("text", "")
+                    final, conf = recognizer.AcceptWaveform(data), 0.0
+                    if final:
+                        result = json.loads(recognizer.Result())
+                        text = result.get("text", "")
+                        conf = max((w.get("conf", 0.0) for w in result.get("result", []) if w.get("word") in NAME_WORDS), default=0.0)
                     else:
                         text = json.loads(recognizer.PartialResult()).get("partial", "")
                     if text and text != "[unk]":
                         self.last_text = text[-60:]
-                    if self.detector.hears(text):
+                    if self.detector.hears(text, final=final, conf=conf):
                         self.last_wake = time.time()
                         try:
                             self.on_wake()
