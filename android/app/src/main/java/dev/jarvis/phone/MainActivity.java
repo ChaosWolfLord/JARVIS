@@ -13,7 +13,14 @@ import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Gravity;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
+import android.widget.TextView;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
@@ -74,9 +81,33 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         prefs = getSharedPreferences("jarvis", MODE_PRIVATE);
         if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true);   // debug builds only: lets the PC inspect the page
+        root = new FrameLayout(this);
+        root.setBackgroundColor(0xFF080A10);
+        setContentView(root);
+        status = new TextView(this);                    // never a bare black screen: this says what the app is doing until a page is showing
+        status.setTextColor(0xFFD4DBE8);
+        status.setTextSize(16);
+        status.setGravity(Gravity.CENTER);
+        status.setPadding(48, 48, 48, 48);
+        status.setBackgroundColor(0xFF080A10);
+        newWeb();
+        load();
+        if (prefs.getBoolean("alerts", false) && !prefs.getString("token", "").isEmpty()) AlertService.start(this);
+        Reminders.scheduleAll(this);                    // alarms are set again every time the app opens (cheap, and heals anything lost)
+    }
+
+    private FrameLayout root;
+    private TextView status;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private int loadId = 0;                             // each load() gets a number, so a late answer for an older one is ignored
+    private boolean pageDone = false;
+
+    private void newWeb() {
         web = new WebView(this);
         web.setBackgroundColor(0xFF080A10);
-        setContentView(web);
+        root.removeAllViews();
+        root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(status, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -95,9 +126,11 @@ public class MainActivity extends Activity {
                 request.deny();                         // the page never gets the microphone itself: speech goes through the bridge
             }
         });
-        if (state != null) web.restoreState(state); else load();
-        if (prefs.getBoolean("alerts", false) && !prefs.getString("token", "").isEmpty()) AlertService.start(this);
-        Reminders.scheduleAll(this);                    // alarms are set again every time the app opens (cheap, and heals anything lost)
+    }
+
+    private void say(String text) {
+        status.setText(text);
+        status.setVisibility(text.isEmpty() ? android.view.View.GONE : android.view.View.VISIBLE);
     }
 
     @Override
@@ -105,13 +138,8 @@ public class MainActivity extends Activity {
         super.onResume();
         visible = new WeakReference<>(this);
         String shown = web.getUrl();
+        if (shown == null || shown.equals("about:blank")) { load(); return; }          // nothing on screen (the page was lost): start again
         if (shown != null && !address().isEmpty() && ((shown.startsWith(SETUP) && shown.contains("offline=1")) || shown.startsWith(LOCAL)) && !chatInProgress) load();      // coming back to the app: try the PC again
-    }
-
-    @Override
-    protected void onSaveInstanceState(Bundle out) {
-        super.onSaveInstanceState(out);
-        web.saveState(out);
     }
 
     @Override
@@ -147,9 +175,59 @@ public class MainActivity extends Activity {
 
     private String pin() { return prefs.getString("pin", ""); }
 
+    /**
+     * Shows the PC's page, or says why not. It first asks the PC (a quick, pinned check), because a saved address that no longer answers
+     * (another network, the PC off or with a new address) would otherwise leave a black screen until the WebView gave up, 20 to 60 seconds later.
+     */
     private void load() {
-        if (!address().isEmpty() && !pin().isEmpty()) web.loadUrl("https://" + address() + "/");
-        else web.loadUrl(SETUP);
+        final int id = ++loadId;
+        final String a = address(), p = pin();
+        if (a.isEmpty() || p.isEmpty()) {
+            say("");
+            web.loadUrl(SETUP);
+            return;
+        }
+        say("JARVIS\n\nConnecting to your PC…");
+        network.execute(() -> {
+            final String problem = reach(a, p);
+            ui.post(() -> {
+                if (id != loadId || isFinishing()) return;
+                if (problem.isEmpty()) {
+                    pageDone = false;
+                    web.loadUrl("https://" + a + "/");
+                    ui.postDelayed(() -> { if (id == loadId && !pageDone) { web.stopLoading(); giveUp("it took too long to answer"); } }, 20000);
+                } else {
+                    giveUp(problem);
+                }
+            });
+        });
+    }
+
+    /** "" if the PC answers with the confirmed key; otherwise what is wrong ("certificate" when the key is not the one that was confirmed). */
+    private String reach(String address, String pin) {
+        try {
+            javax.net.ssl.HttpsURLConnection c = Pinned.open(address, pin, "/ping");
+            c.setConnectTimeout(4000);
+            c.setReadTimeout(4000);
+            int code = c.getResponseCode();
+            c.disconnect();
+            return code == 200 || code == 401 ? "" : "that address did not answer like JARVIS";       // 401 only means "not signed in yet"
+        } catch (javax.net.ssl.SSLException e) {
+            return "certificate";
+        } catch (java.net.SocketTimeoutException e) {
+            return "it did not answer";
+        } catch (java.net.UnknownHostException e) {
+            return "that address was not found";
+        } catch (Exception e) {
+            return "could not connect";
+        }
+    }
+
+    /** The PC can't be shown: the standalone assistant if the phone has AI keys, otherwise a page that says why. Never a blank screen. */
+    private void giveUp(String why) {
+        loadId++;
+        if (!"certificate".equals(why) && Net.keyCount(this) > 0) web.loadUrl(LOCAL);
+        else web.loadUrl(SETUP + "?offline=1&address=" + Uri.encode(address()) + "&why=" + Uri.encode(why));
     }
 
     private boolean ours(String url) {
@@ -182,6 +260,28 @@ public class MainActivity extends Activity {
         }
 
         @Override
+        public void onPageFinished(WebView view, String url) {
+            pageDone = true;
+            status.setVisibility(android.view.View.GONE);
+        }
+
+        @Override
+        public void onReceivedHttpError(WebView view, WebResourceRequest request, android.webkit.WebResourceResponse response) {
+            if (request.isForMainFrame() && !request.getUrl().toString().startsWith("file:") && response.getStatusCode() >= 400 && response.getStatusCode() != 401)
+                giveUp("the PC answered with error " + response.getStatusCode());
+        }
+
+        @Override
+        public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            ui.post(() -> {                              // the page's process died (low memory): without this the app would close or stay black
+                try { web.destroy(); } catch (RuntimeException ignored) { }
+                newWeb();
+                load();
+            });
+            return true;
+        }
+
+        @Override
         public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
             try {
                 SslCertificate sc = error.getCertificate();
@@ -194,16 +294,13 @@ public class MainActivity extends Activity {
                 // fall through to refusing
             }
             handler.cancel();
-            // never leave a blank screen: say why, and offer "Change PC"
-            runOnUiThread(() -> web.loadUrl(SETUP + "?offline=1&address=" + Uri.encode(address()) + "&why=certificate"));
+            runOnUiThread(() -> giveUp("certificate"));          // never leave a blank screen: say why, and offer "Change PC"
         }
 
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             if (request.isForMainFrame() && !request.getUrl().toString().startsWith("file:")) {
-                String why = error.getDescription() == null ? "" : error.getDescription().toString();
-                if (Net.keyCount(MainActivity.this) > 0) web.loadUrl(LOCAL);      // away from home or the PC is off: the standalone assistant
-                else web.loadUrl(SETUP + "?offline=1&address=" + Uri.encode(address()) + "&why=" + Uri.encode(why));
+                giveUp(error.getDescription() == null ? "" : error.getDescription().toString());      // away from home or the PC is off: the standalone assistant, or a page that says so
             }
         }
     }
@@ -287,7 +384,7 @@ public class MainActivity extends Activity {
         private boolean ok() { return trustedPage; }
 
         @JavascriptInterface
-        public String version() { return "1.2.1"; }
+        public String version() { return "1.2.2"; }
 
         /** The saved address (host:port) of the PC, or "" before setup. */
         @JavascriptInterface

@@ -54,7 +54,8 @@ class Pinning(unittest.TestCase):
 
     def test_a_refused_certificate_leaves_a_way_out_not_a_blank_screen(self):
         refuse = JAVA[JAVA.index("handler.cancel();"):]
-        self.assertIn("why=certificate", refuse[:400])
+        self.assertIn('giveUp("certificate")', refuse[:400])
+        self.assertIn('SETUP + "?offline=1&address="', JAVA[JAVA.index("private void giveUp"):])
         self.assertIn("why === 'certificate'", SETUP)
 
     def test_the_bridge_checks_where_it_is_called_from(self):
@@ -116,7 +117,16 @@ class Contract(unittest.TestCase):
         gradle = (ROOT / "android" / "app" / "build.gradle.kts").read_text("utf-8")
         self.assertIn('from("../../web/phone")', gradle)
         self.assertIn("LOCAL = \"file:///android_asset/phone/phone.html\"", JAVA)
-        self.assertIn("Net.keyCount(MainActivity.this) > 0) web.loadUrl(LOCAL)", JAVA)    # unreachable PC -> standalone page, when the keys are here
+        self.assertIn("Net.keyCount(this) > 0) web.loadUrl(LOCAL)", JAVA)                 # unreachable PC -> standalone page, when the keys are here
+
+    def test_an_unreachable_pc_never_leaves_a_black_screen(self):
+        load = JAVA[JAVA.index("private void load()"):JAVA.index("private boolean ours")]
+        self.assertIn("Connecting to your PC", load)                                       # something to read while it checks
+        self.assertIn("reach(a, p)", load)                                                 # a quick pinned check before the WebView is sent there
+        self.assertIn("setConnectTimeout(4000)", load)
+        self.assertIn("it took too long", load)                                            # and a limit on the page itself
+        for needle in ("onReceivedHttpError", "onRenderProcessGone", "onPageFinished", "about:blank"):
+            self.assertIn(needle, JAVA)
 
     def test_the_setup_page_and_the_app_agree_on_the_probe(self):
         self.assertIn("window.onProbe&&window.onProbe(", JAVA)
