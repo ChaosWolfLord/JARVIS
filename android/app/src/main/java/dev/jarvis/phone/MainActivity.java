@@ -158,9 +158,13 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    /**
+     * Back (or the swipe) leaves the app, like any other app, and brings it back as it was. It never walks the WebView's page history: after
+     * setup that history still holds the setup page, so one stray swipe used to land on "Connect to JARVIS" and look like being logged out.
+     */
     @Override
     public void onBackPressed() {
-        if (web.canGoBack()) web.goBack(); else super.onBackPressed();
+        moveTaskToBack(true);
     }
 
     // ---- updates ---------------------------------------------------------------------------------------------------------

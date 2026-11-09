@@ -190,6 +190,12 @@ class UpdatesAndWebsite(unittest.TestCase):
         self.assertIn("jarvis.apk", script)                                                  # the name the links and the update check rely on
         self.assertIn("jarvis.apk", self.UPDATES)
 
+    def test_back_leaves_the_app_instead_of_walking_the_page_history(self):
+        back = JAVA[JAVA.index("public void onBackPressed()"):]
+        back = back[:back.index("}") + 1]
+        self.assertIn("moveTaskToBack(true)", back)
+        self.assertNotIn("goBack", JAVA)          # the history after setup still holds the setup page: going back would look like being logged out
+
     def test_the_website_is_self_contained(self):
         self.assertNotRegex(self.SITE, r'(src|href)="https?://(?!github\.com/ChaosWolfLord/JARVIS)')   # no outside scripts, fonts or trackers
         self.assertTrue((ROOT / "docs" / ".nojekyll").exists())
