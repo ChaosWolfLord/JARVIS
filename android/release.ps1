@@ -11,10 +11,10 @@ $version = [regex]::Match($gradle, 'versionName\s*=\s*"([^"]+)"').Groups[1].Valu
 if (-not $version) { throw "Could not find versionName in app\build.gradle.kts" }
 $tag = "v$version"
 
-& gh release view $tag *> $null
+cmd /c "gh release view $tag >nul 2>nul"        # (not & gh ...: a "not found" on stderr would stop the script)
 if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists. Raise versionName and versionCode in app\build.gradle.kts first." }
 
-cmd /c "build.bat"
+& "$PSScriptRoot\build.bat"
 if ($LASTEXITCODE -ne 0) { throw "The build failed." }
 
 $apk = Join-Path $env:LOCALAPPDATA "jarvis\app\jarvis.apk"
