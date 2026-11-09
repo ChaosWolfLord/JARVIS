@@ -26,7 +26,7 @@ $notes = if (Test-Path $notesFile) { (Get-Content $notesFile -Raw).Trim() } else
 $notes += "`n`nSHA-256 of jarvis.apk: $hash"
 
 $body = Join-Path $env:TEMP "jarvis-release-notes.md"
-Set-Content -Path $body -Value $notes -Encoding utf8
+[System.IO.File]::WriteAllText($body, $notes, (New-Object System.Text.UTF8Encoding($false)))      # no byte-order mark: it would show up as a stray character in the app's update dialog
 & gh release create $tag $apk --title "JARVIS app $version" --notes-file $body
 if ($LASTEXITCODE -ne 0) { throw "Publishing the release failed." }
 Write-Output "Published $tag. The website and every phone with the app will see it."
