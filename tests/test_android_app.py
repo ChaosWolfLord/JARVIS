@@ -138,5 +138,62 @@ class Contract(unittest.TestCase):
         self.assertIn("assemble%KIND%", (ROOT / "android" / "build.bat").read_text("utf-8"))
 
 
+class UpdatesAndWebsite(unittest.TestCase):
+    UPDATES = (APP / "java" / "dev" / "jarvis" / "phone" / "Updates.java").read_text("utf-8")
+    SITE = (ROOT / "docs" / "index.html").read_text("utf-8")
+    GRADLE = (ROOT / "android" / "app" / "build.gradle.kts").read_text("utf-8")
+
+    def test_it_only_asks_the_projects_own_github_releases_over_https(self):
+        self.assertIn('API = "https://api.github.com/repos/" + REPO + "/releases/latest"', self.UPDATES)
+        self.assertIn('REPO = "ChaosWolfLord/JARVIS"', self.UPDATES)
+        self.assertIn('DOWNLOADS = "https://github.com/" + REPO + "/releases/download/"', self.UPDATES)
+        self.assertIn("url.startsWith(DOWNLOADS)", self.UPDATES)                         # a file from anywhere else is never offered
+        self.assertIn("setInstanceFollowRedirects(false)", self.UPDATES)
+        self.assertNotIn("http://", self.UPDATES)
+        self.assertNotIn("TrustManager", self.UPDATES)                                    # the phone's normal certificate checks, nothing relaxed
+
+    def test_it_never_installs_by_itself(self):
+        for forbidden in ("REQUEST_INSTALL_PACKAGES", "PackageInstaller", "application/vnd.android.package-archive"):
+            self.assertNotIn(forbidden, MANIFEST + JAVA + self.UPDATES)
+        self.assertIn("Intent.ACTION_VIEW", JAVA)                                          # it opens the download; the person installs it
+
+    def test_the_check_is_throttled_and_can_be_switched_off(self):
+        self.assertIn('prefs.getBoolean("updates", true)', JAVA)
+        self.assertIn("Updates.EVERY", JAVA)
+        for name in ("updatesOn", "setUpdates", "checkUpdates"):
+            self.assertIn(name, bridge_methods())
+        self.assertIn("app.updatesOn", PHONE_JS)
+        page = (ROOT / "web" / "phone" / "phone.html").read_text("utf-8")
+        for ident in ("opt-upd", "upd-now", "upd-ver", "set-app"):
+            self.assertIn(f'id="{ident}"', page)
+
+    def test_the_version_comparison_is_numeric(self):
+        # mirrors Updates.compare: "1.10" is newer than "1.9", "1.2.3" equals "1.2.3.0"
+        def compare(a, b):
+            x, y = [int(n) for n in a.split(".")], [int(n) for n in b.split(".")]
+            for i in range(max(len(x), len(y))):
+                p, q = x[i] if i < len(x) else 0, y[i] if i < len(y) else 0
+                if p != q:
+                    return (p > q) - (p < q)
+            return 0
+        self.assertEqual(compare("1.10", "1.9"), 1)
+        self.assertEqual(compare("1.2.3", "1.2.3.0"), 0)
+        self.assertEqual(compare("1.2.2", "1.2.3"), -1)
+        self.assertIn("Integer.compare(p, q)", self.UPDATES)
+
+    def test_a_release_has_notes_and_the_website_points_at_the_same_file(self):
+        version = re.search(r'versionName = "([^"]+)"', self.GRADLE).group(1)
+        self.assertTrue((ROOT / "android" / "release-notes" / f"{version}.md").exists(), "write android/release-notes/<version>.md")
+        self.assertIn("releases/latest/download/jarvis.apk", self.SITE)
+        self.assertIn("ChaosWolfLord/JARVIS", self.SITE)
+        script = (ROOT / "android" / "release.ps1").read_text("utf-8")
+        self.assertIn("jarvis.apk", script)                                                  # the name the links and the update check rely on
+        self.assertIn("jarvis.apk", self.UPDATES)
+
+    def test_the_website_is_self_contained(self):
+        self.assertNotRegex(self.SITE, r'(src|href)="https?://(?!github\.com/ChaosWolfLord/JARVIS)')   # no outside scripts, fonts or trackers
+        self.assertTrue((ROOT / "docs" / ".nojekyll").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

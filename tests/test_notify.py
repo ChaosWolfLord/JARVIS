@@ -179,7 +179,7 @@ class WhatToAnnounce(unittest.TestCase):
         self.assertEqual(prompts, {"recent": 1e6 - 5})
 
     def test_the_project_name_comes_from_the_folder(self):
-        self.assertEqual(hook.project_name(r"C:\Usersyou\OneDrive\Code\Cyberpi Test"), "Cyberpi Test")
+        self.assertEqual(hook.project_name(r"C:\Users\you\OneDrive\Code\Cyberpi Test"), "Cyberpi Test")
         self.assertEqual(hook.project_name(""), "")
 
 

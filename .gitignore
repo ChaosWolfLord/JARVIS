@@ -16,3 +16,6 @@ android/build/
 android/local.properties
 android/.idea/
 *.apk
+
+# Claude Code local preview config (holds a path on this PC)
+.claude/launch.json

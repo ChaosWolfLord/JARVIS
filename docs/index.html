@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JARVIS for Android</title>
+  <meta name="description" content="The Android app for JARVIS, a projected AI whiteboard that runs on your own PC. Talk or type to it over your home Wi-Fi, get alerts, and set reminders that ring even with the PC off.">
+  <meta name="theme-color" content="#080a10">
+  <style>
+    :root {
+      --bg: #080a10; --panel: rgba(255,255,255,.045); --line: rgba(255,255,255,.11); --text: #d4dbe8; --white: #f2f5fb; --dim: #8f99ae;
+      --accent: 122, 190, 255; --accent2: 176, 142, 255; --button-text: #0a1220;
+      color-scheme: dark;
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg: #f4f6fb; --panel: rgba(10,18,32,.045); --line: rgba(10,18,32,.13); --text: #2a3347; --white: #0c1424; --dim: #5d677d;
+        --accent: 30, 120, 220; --accent2: 120, 80, 220; --button-text: #ffffff; color-scheme: light;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; min-height: 100dvh; color: var(--text); background: var(--bg);
+      background-image: radial-gradient(ellipse 90% 40% at 8% -5%, rgba(var(--accent), .18), transparent 65%), radial-gradient(ellipse 80% 40% at 100% 105%, rgba(var(--accent2), .15), transparent 65%);
+      background-attachment: fixed;
+      font: 17px/1.6 "Segoe UI", Roboto, system-ui, -apple-system, sans-serif;
+    }
+    a { color: rgb(var(--accent)); }
+    .wrap { width: min(980px, 100% - 32px); margin: 0 auto; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+    .brand { display: flex; align-items: center; gap: 12px; color: var(--white); text-decoration: none; letter-spacing: 6px; font-weight: 300; font-size: 20px; }
+    .orb { width: 30px; height: 30px; border-radius: 50%; border: 4px solid transparent; box-shadow: 0 0 22px rgba(var(--accent), .4);
+      background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(135deg, #bfe0ff, rgb(var(--accent)), rgb(var(--accent2))) border-box; }
+    nav a { margin-left: 18px; font-size: 15px; color: var(--dim); text-decoration: none; }
+    nav a:hover { color: var(--white); }
+
+    .hero { text-align: center; padding: 56px 0 30px; }
+    .hero .orb { width: 92px; height: 92px; border-width: 7px; margin: 0 auto 26px; box-shadow: 0 0 60px rgba(var(--accent), .45); }
+    h1 { margin: 0 0 14px; font-weight: 250; font-size: clamp(34px, 7vw, 58px); line-height: 1.1; color: var(--white); letter-spacing: -.5px; }
+    .lead { max-width: 56ch; margin: 0 auto 30px; color: var(--dim); font-size: 19px; }
+    .cta { display: inline-flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 30px; border-radius: 18px; font-weight: 600; font-size: 18px; text-decoration: none;
+      color: var(--button-text); background: rgb(var(--accent)); box-shadow: 0 10px 38px rgba(var(--accent), .35); transition: transform .15s, box-shadow .15s; }
+    .cta:hover { transform: translateY(-1px); box-shadow: 0 14px 44px rgba(var(--accent), .45); }
+    .cta:focus-visible, .ghost:focus-visible { outline: 3px solid rgba(var(--accent), .6); outline-offset: 3px; }
+    .cta svg { width: 22px; height: 22px; }
+    .ghost { display: inline-flex; align-items: center; min-height: 56px; padding: 0 22px; margin-left: 10px; border-radius: 18px; border: 1px solid var(--line); color: var(--text); text-decoration: none; background: var(--panel); }
+    .ghost:hover { border-color: rgba(var(--accent), .5); }
+    .meta { margin-top: 16px; color: var(--dim); font-size: 14px; min-height: 1.5em; }
+
+    section { padding: 34px 0; }
+    h2 { margin: 0 0 18px; font-weight: 300; font-size: 28px; color: var(--white); }
+    .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .card { padding: 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); backdrop-filter: blur(8px); }
+    .card h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; color: var(--white); }
+    .card p { margin: 0; color: var(--dim); font-size: 15px; line-height: 1.55; }
+    ol.steps { list-style: none; counter-reset: s; margin: 0; padding: 0; display: grid; gap: 12px; }
+    ol.steps li { counter-increment: s; position: relative; padding: 18px 20px 18px 64px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+    ol.steps li::before { content: counter(s); position: absolute; left: 18px; top: 16px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 15px;
+      color: var(--button-text); background: rgb(var(--accent)); }
+    ol.steps b { color: var(--white); font-weight: 600; }
+    .note { padding: 16px 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--dim); font-size: 15px; }
+    code { font: 14px Consolas, "Courier New", monospace; padding: 2px 6px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); color: var(--white); }
+    footer { padding: 36px 0 54px; color: var(--dim); font-size: 14px; border-top: 1px solid var(--line); margin-top: 24px; }
+    footer p { margin: 0 0 6px; }
+    @media (max-width: 520px) { .ghost { margin: 12px 0 0; } nav { display: none; } }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .cta { transition: none; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="#top" aria-label="JARVIS"><span class="orb" aria-hidden="true"></span>JARVIS</a>
+      <nav><a href="#install">Install</a><a href="#features">What it does</a><a href="#privacy">Privacy</a><a href="https://github.com/ChaosWolfLord/JARVIS">GitHub</a></nav>
+    </header>
+
+    <main id="top">
+      <div class="hero">
+        <div class="orb" aria-hidden="true"></div>
+        <h1>JARVIS, in your pocket.</h1>
+        <p class="lead">The Android app for JARVIS, the projected AI whiteboard that runs on your own PC. Ask it by voice or text over your home Wi-Fi, get its alerts, and set reminders that ring even when the PC is off.</p>
+        <div>
+          <a class="cta" id="download" href="https://github.com/ChaosWolfLord/JARVIS/releases/latest/download/jarvis.apk" download>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
+            Download for Android
+          </a>
+          <a class="ghost" href="https://github.com/ChaosWolfLord/JARVIS/releases/latest">All versions</a>
+        </div>
+        <p class="meta" id="meta">Android 10 or newer · free</p>
+      </div>
+
+      <section id="install">
+        <h2>Install it in a minute</h2>
+        <ol class="steps">
+          <li><b>Download the file</b> with the button above, on your phone. Android may ask whether you trust Chrome to install apps: say yes (you can switch it off again afterwards).</li>
+          <li><b>Open the downloaded file</b> and press Install. If Google Play Protect says the app is unknown, that is because it is not from the Play Store; choose <b>Install anyway</b>.</li>
+          <li><b>Connect it to your PC.</b> Start JARVIS on the PC, open the status menu and look under <b>Phone</b> for the address and the fingerprint. Type the address in the app, check that the fingerprint matches, then enter the six-digit code from <b>Show pairing code</b>.</li>
+        </ol>
+        <p class="note" style="margin-top:14px">The phone and the PC need to be on the same Wi-Fi. Updates: the app looks for new versions by itself and offers them, then you open the downloaded file once to install. Your pairing and reminders stay.</p>
+      </section>
+
+      <section id="features">
+        <h2>What it does</h2>
+        <div class="grid">
+          <div class="card"><h3>Talk or type</h3><p>Ask JARVIS anything from the sofa. Answers can show up on the wall, be read out on the PC speakers, or stay on the phone.</p></div>
+          <div class="card"><h3>Reminders that always ring</h3><p>Reminders are kept on the phone with their own alarms, so they go off even when the PC is off or out of reach.</p></div>
+          <div class="card"><h3>Alerts when the app is closed</h3><p>Optionally, finished timers and system problems from the PC reach you as notifications.</p></div>
+          <div class="card"><h3>Works without the PC</h3><p>Away from home? With your own AI keys copied to the phone, JARVIS still answers questions, searches the web and sets reminders.</p></div>
+        </div>
+      </section>
+
+      <section id="privacy">
+        <h2>Private by design</h2>
+        <div class="grid">
+          <div class="card"><h3>Home Wi-Fi only</h3><p>The app only talks to your own PC, and your PC only accepts devices on your home network.</p></div>
+          <div class="card"><h3>Pinned to your PC</h3><p>On first run you compare a fingerprint with the one on the PC. After that the app trusts that key and nothing else.</p></div>
+          <div class="card"><h3>Nothing goes to us</h3><p>There is no account and no server of ours. The one thing the app asks the internet for is whether a newer version exists on GitHub, and you can switch that off in its settings.</p></div>
+        </div>
+        <p class="note" style="margin-top:14px">You can check the download: its SHA-256 fingerprint is in each release's notes on the <a href="https://github.com/ChaosWolfLord/JARVIS/releases/latest">releases page</a>, and the whole app is open on GitHub to read.</p>
+      </section>
+    </main>
+
+    <footer>
+      <p>An independent hobby project. It is not affiliated with, or endorsed by, Marvel or Disney.</p>
+      <p><a href="https://github.com/ChaosWolfLord/JARVIS">Source code and the PC part of JARVIS on GitHub</a></p>
+    </footer>
+  </div>
+
+  <script>
+    // Shows the newest version, its size and date next to the button. The button works without it: it always points at the latest release.
+    (async () => {
+      const meta = document.getElementById('meta');
+      try {
+        const res = await fetch('https://api.github.com/repos/ChaosWolfLord/JARVIS/releases/latest', { headers: { Accept: 'application/vnd.github+json' } });
+        if (!res.ok) return;
+        const rel = await res.json();
+        const apk = (rel.assets || []).find((a) => a.name === 'jarvis.apk');
+        if (!apk) return;
+        const kb = Math.max(1, Math.round(apk.size / 1024));
+        const when = new Date(rel.published_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+        meta.textContent = `Version ${String(rel.tag_name).replace(/^v/, '')} · ${kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB'} · ${when} · Android 10 or newer · free`;
+      } catch { /* offline or rate-limited: the generic line stays */ }
+    })();
+  </script>
+</body>
+</html>

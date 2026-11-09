@@ -108,6 +108,13 @@ async function checkConnection() {
   }
 }
 
+function showUpdates() {                                    // only the app has updates, and only newer apps know how to ask
+  if (!app || typeof app.updatesOn !== 'function') return;
+  $('set-app').hidden = false;
+  $('opt-upd').checked = app.updatesOn();
+  $('upd-ver').textContent = `This is version ${app.version()}.`;
+}
+
 function start() {
   show('chat');
   $('opt-wall').checked = prefs.wall;
@@ -124,6 +131,7 @@ function start() {
     $('bg-row').hidden = false;
     $('opt-bg').checked = app.backgroundAlerts();
   }
+  showUpdates();
   syncReminders();
   if (app && typeof Brain !== 'undefined') Brain.sync((path, body) => api(path, { method: 'POST', body: JSON.stringify(body) }).then((r) => (r.ok ? r.json() : null)).catch(() => null));
 }
@@ -518,6 +526,8 @@ $('rem-form').addEventListener('submit', async (e) => {
   renderReminders();
 });
 $('opt-bg').addEventListener('change', (e) => { app?.setBackgroundAlerts(e.target.checked); });
+$('opt-upd').addEventListener('change', (e) => { app?.setUpdates?.(e.target.checked); });
+$('upd-now').addEventListener('click', () => app?.checkUpdates?.());
 window.__alert = (ev) => alertUser(ev);                     // the app hands over an alarm that is ringing while the page is open
 setInterval(() => { if (token && !document.hidden) syncReminders(); }, 5 * 60 * 1000);
 
@@ -576,6 +586,7 @@ function startLocal() {
   $('opt-awake').checked = prefs.awake;
   $('bg-row').hidden = false;
   $('opt-bg').checked = app.backgroundAlerts();
+  showUpdates();
   if (!$('log').childElementCount) {
     add('note', Brain.keyCount() ? 'Your PC isn’t reachable, so I’m running on the phone: chat, web search, weather, reminders and timers, and what I remember about you. Lights, music and the board need the PC.' : 'No AI keys on this phone yet. Connect to the PC once and copy them (menu, AI keys), then I can answer without it.');
   }

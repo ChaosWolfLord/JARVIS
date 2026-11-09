@@ -20,6 +20,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -94,6 +95,7 @@ public class MainActivity extends Activity {
         load();
         if (prefs.getBoolean("alerts", false) && !prefs.getString("token", "").isEmpty()) AlertService.start(this);
         Reminders.scheduleAll(this);                    // alarms are set again every time the app opens (cheap, and heals anything lost)
+        checkForUpdate(false);
     }
 
     private FrameLayout root;
@@ -159,6 +161,46 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (web.canGoBack()) web.goBack(); else super.onBackPressed();
+    }
+
+    // ---- updates ---------------------------------------------------------------------------------------------------------
+    private String installedVersion() {
+        try {
+            String v = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            return v == null ? "0" : v;
+        } catch (Exception e) {
+            return "0";
+        }
+    }
+
+    /** Asks GitHub whether a newer version of the app exists (at most twice a day, unless the person asked), and offers it. Never installs by itself. */
+    private void checkForUpdate(final boolean asked) {
+        long now = System.currentTimeMillis();
+        if (!asked && (!prefs.getBoolean("updates", true) || now - prefs.getLong("update_checked", 0) < Updates.EVERY)) return;
+        network.execute(() -> {
+            try {
+                final Updates.Found found = Updates.check(installedVersion());
+                prefs.edit().putLong("update_checked", System.currentTimeMillis()).apply();
+                ui.post(() -> {
+                    if (isFinishing()) return;
+                    if (found != null) offer(found);
+                    else if (asked) Toast.makeText(this, "You have the newest version (" + installedVersion() + ").", Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception e) {
+                if (asked) ui.post(() -> { if (!isFinishing()) Toast.makeText(this, "Couldn't check for updates. Is the phone online?", Toast.LENGTH_LONG).show(); });
+            }
+        });
+    }
+
+    private void offer(final Updates.Found found) {
+        String text = (found.notes.isEmpty() ? "" : found.notes + "\n\n")
+                + "Download it, then open the downloaded file to install. Your pairing, reminders and settings stay.";
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("JARVIS " + found.version + " is available")
+                .setMessage(text)
+                .setPositiveButton("Download", (d, w) -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(found.url))))
+                .setNegativeButton("Later", null)
+                .show();
     }
 
     // ---- what to show -----------------------------------------------------------------------------------------------
@@ -384,7 +426,22 @@ public class MainActivity extends Activity {
         private boolean ok() { return trustedPage; }
 
         @JavascriptInterface
-        public String version() { return "1.2.2"; }
+        public String version() { return installedVersion(); }
+
+        /** App updates: is the daily look at GitHub's releases page on? */
+        @JavascriptInterface
+        public boolean updatesOn() { return ok() && prefs.getBoolean("updates", true); }
+
+        @JavascriptInterface
+        public void setUpdates(boolean on) {
+            if (ok()) prefs.edit().putBoolean("updates", on).apply();
+        }
+
+        /** "Check now": asks GitHub right away and says what it found. */
+        @JavascriptInterface
+        public void checkUpdates() {
+            if (ok()) runOnUiThread(() -> checkForUpdate(true));
+        }
 
         /** The saved address (host:port) of the PC, or "" before setup. */
         @JavascriptInterface
