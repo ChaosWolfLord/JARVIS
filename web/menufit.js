@@ -15,4 +15,4 @@ export function fitMenu(menu) {
 }
 
 // A window that gets resized while a menu is open needs the menu re-fitted.
-window.addEventListener('resize', () => document.querySelectorAll('#status-menu, #widget-menu').forEach((m) => fitMenu(m)));
+window.addEventListener('resize', () => document.querySelectorAll('#widget-menu').forEach((m) => fitMenu(m)));

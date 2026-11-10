@@ -94,10 +94,56 @@ class Clarity(unittest.TestCase):
         self.assertIn("voice.interrupt()", APP)                               # while it talks, a tap stops it
 
 
+class StatusPanel(unittest.TestCase):
+    STATUS = (WEB / "status.js").read_text("utf-8")
+    CSS = (WEB / "statuspanel.css").read_text("utf-8")
+
+    def test_it_is_a_panel_on_the_left_outside_the_bar_and_its_button_is_on_the_left_of_the_bar(self):
+        panel = INDEX.index('<aside id="status-menu"')
+        bar = INDEX.index('<nav id="toolbar"')
+        self.assertLess(panel, bar)                                                  # not inside the bar any more
+        self.assertIn("left: 12px", self.CSS)
+        left = INDEX[INDEX.index('<div class="dock-side dock-left">'):INDEX.index('<button id="orb"')]
+        self.assertIn('id="btn-status"', left)
+        self.assertNotIn('id="btn-status"', INDEX[INDEX.index('<div class="dock-side dock-right">'):])
+
+    def test_it_can_stay_open_next_to_the_chat(self):
+        self.assertNotIn("document.addEventListener('click'", self.STATUS)             # clicking elsewhere (the chat, the board) does not close it
+        self.assertIn("position: absolute", self.CSS)                                # an overlay: the chat panel keeps its own place on the right
+        self.assertIn("setPanel", APP)
+        self.assertIn("key === 's'", APP)                                            # S opens and closes it
+
+    def test_it_answers_is_everything_ok_before_anything_else(self):
+        for needle in ("Everything is working", "thing to look at", "JARVIS isn’t running", "Needs attention", "Working", "Not in use"):
+            self.assertIn(needle, self.STATUS)
+        for ident in ("sd-summary", "sd-headline", "sd-sub", "status-close", "status-rows"):
+            self.assertIn(ident, page.ids)
+
+    def test_a_problem_says_what_to_do_about_it(self):
+        for hint in ("Add ${i.key_env", "Start it with JARVIS.bat", "Open JARVIS in Chrome or Edge", "Start run_tracker.bat"):
+            self.assertIn(hint, self.STATUS)
+
+    def test_the_quick_actions_and_sections_are_named_with_a_line_saying_what_is_inside(self):
+        drawer = INDEX[INDEX.index('<aside id="status-menu"'):INDEX.index('</aside>', INDEX.index('<aside id="status-menu"'))]
+        actions = re.findall(r'data-do="(\w+)"', drawer)
+        self.assertEqual(actions, ["lock", "pair", "picture"])
+        sections = re.findall(r'<details class="sd-sec" id="(sec-\w+)">.*?<b>(.*?)</b><small>(.*?)</small>', INDEX, re.S)
+        self.assertEqual([s[0] for s in sections], ["sec-phone", "sec-privacy", "sec-voice", "sec-display", "sec-board", "sec-tools"])
+        for _, name, line in sections:
+            self.assertTrue(name and len(line) > 10)
+
+    def test_everything_that_lived_in_the_old_menu_is_still_there(self):
+        for ident in ("privacy-lock", "privacy-setcode", "privacy-form", "phone-show", "phone-forget", "phone-info", "voice-pick", "voice-rate", "voice-pitch", "voice-test",
+                      "opt-look", "ambient-minutes", "opt-sounds", "opt-boot", "boot-replay", "export-png", "export-json", "show-backups", "show-activity", "status-backups",
+                      "mcp-rows", "mcp-reload"):
+            self.assertIn(ident, page.ids, ident)
+
+
 class Pieces(unittest.TestCase):
     def test_the_dock_stylesheet_and_menus_are_wired_in(self):
         self.assertIn('href="dock.css"', INDEX)
-        self.assertIn("import { dockMenus } from './dockmenus.js'", APP)
+        self.assertIn("from './dockmenus.js'", APP)
+        self.assertIn("watchDockSize", APP)
         self.assertIn("btn-more", APP)
         menus = (WEB / "dockmenus.js").read_text("utf-8")
         for needle in ("Escape", "aria-expanded", "fitMenu"):

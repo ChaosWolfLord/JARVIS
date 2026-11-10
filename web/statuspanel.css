@@ -1,0 +1,124 @@
+/* The status panel: a panel on the left of the board, opened by the Status button (or S), that can stay open next to the chat.
+   Top: one plain answer ("Everything is working", or how many things need a look) and three quick actions.
+   Then the checks (needs attention, working, not in use) and, below, the settings in sections you open when you want them.
+   It uses the colour variables of whichever look is on. Loaded after dock.css. */
+
+#status-menu.status-drawer, html.modern #status-menu.status-drawer {
+  position: absolute; left: 12px; right: auto; top: 12px; bottom: 126px; margin: 0; z-index: 25;
+  width: clamp(300px, 27vw, 400px); max-width: calc(100vw - 24px); max-height: none; padding: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+  background: rgba(2, 14, 20, 0.97); border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 0 30px rgba(var(--accent-rgb), 0.2);
+}
+html.modern #status-menu.status-drawer {
+  background: var(--surface); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); box-shadow: var(--shadow);
+}
+#status-menu.status-drawer[hidden] { display: none; }
+body.touch #status-menu.status-drawer { bottom: 148px; width: clamp(400px, 34vw, 540px); }
+body.ambient #status-menu.status-drawer { opacity: 0; pointer-events: none; }
+
+/* ---- the answer at the top ---- */
+.sd-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 14px 14px 18px; border-bottom: 1px solid var(--line); }
+#sd-summary { display: flex; align-items: center; gap: 14px; min-width: 0; }
+#sd-summary b { display: block; font-size: 19px; font-weight: 600; color: var(--white); line-height: 1.2; }
+#sd-summary small { display: block; margin-top: 2px; font-size: 13px; color: var(--dim); overflow-wrap: anywhere; }
+.sd-light { flex: none; width: 16px; height: 16px; border-radius: 50%; background: var(--dim); }
+#sd-summary[data-level="ok"] .sd-light { background: var(--green); box-shadow: 0 0 0 5px rgba(110, 231, 176, 0.16), 0 0 14px var(--green); }
+#sd-summary[data-level="warn"] .sd-light { background: var(--amber); box-shadow: 0 0 0 5px rgba(255, 196, 107, 0.16), 0 0 14px var(--amber); }
+#sd-summary[data-level="down"] .sd-light { background: var(--red); box-shadow: 0 0 0 5px rgba(255, 122, 133, 0.16), 0 0 14px var(--red); animation: blink 1s ease-in-out infinite; }
+.sd-close { flex: none; width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 12px; background: none; color: var(--dim); cursor: pointer; }
+.sd-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--white); }
+.sd-close svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+.sd-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 18px; }
+
+/* ---- quick actions ---- */
+.sd-quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.sd-quick button {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 11px 4px 9px; border: 1px solid var(--hair, var(--line)); border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04); color: var(--text); cursor: pointer; font-size: 12.5px; line-height: 1.1;
+}
+.sd-quick button:hover { background: rgba(255, 255, 255, 0.09); color: var(--white); }
+.sd-quick svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- the checks ---- */
+#status-rows { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+#status-rows .sd-group { display: block; grid-template-columns: none; margin: 10px 0 4px; padding: 0 4px; font-size: 11.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--dim); }
+#status-rows .sd-group:first-child { margin-top: 0; }
+#status-rows li:not(.sd-group) { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 9px 10px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); }
+#status-rows li[data-state="warn"] { background: rgba(255, 196, 107, 0.1); }
+#status-rows li[data-state="down"] { background: rgba(255, 122, 133, 0.12); }
+#status-rows li i { width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: var(--dim); }
+#status-rows li[data-state="ok"] i { background: var(--green); }
+#status-rows li[data-state="warn"] i { background: var(--amber); }
+#status-rows li[data-state="down"] i { background: var(--red); }
+#status-rows li[data-state="idle"] { background: none; }
+#status-rows li[data-state="idle"] i { background: transparent; box-shadow: inset 0 0 0 2px var(--dim); }
+#status-rows li div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+#status-rows li b { font-size: 14px; font-weight: 600; color: var(--white); }
+#status-rows li span { font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
+#status-rows li em { margin-top: 3px; font-style: normal; font-size: 12.5px; line-height: 1.4; color: var(--dim); }
+#status-rows li[data-state="warn"] em, #status-rows li[data-state="down"] em { color: var(--text); }
+#status-menu .sd-act {
+  align-self: center; height: 30px; padding: 0 12px; border: 1px solid rgba(var(--accent-rgb), 0.5); border-radius: 999px; background: rgba(var(--accent-rgb), 0.12);
+  color: var(--cyan); font-size: 12.5px; cursor: pointer; white-space: nowrap;
+}
+#status-menu .sd-act:hover { background: rgba(var(--accent-rgb), 0.25); }
+
+/* ---- settings, in sections you open when you want them ---- */
+.sd-sec { margin-top: 2px; border-top: 1px solid var(--hair, var(--line)); }
+.sd-sec:first-of-type { margin-top: 12px; }
+.sd-sec summary { display: flex; align-items: center; gap: 12px; padding: 12px 4px; cursor: pointer; list-style: none; border-radius: 12px; }
+.sd-sec summary::-webkit-details-marker { display: none; }
+.sd-sec summary:hover { background: rgba(255, 255, 255, 0.04); }
+.sd-sec summary svg { flex: none; width: 22px; height: 22px; fill: none; stroke: var(--dim); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sd-sec summary span { flex: 1; min-width: 0; }
+.sd-sec summary b { display: block; font-size: 14.5px; font-weight: 600; color: var(--white); }
+.sd-sec summary small { display: block; margin-top: 1px; font-size: 12.5px; color: var(--dim); }
+.sd-sec summary::after { content: ""; flex: none; width: 8px; height: 8px; margin-right: 6px; border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim); transform: rotate(-45deg); transition: transform 0.15s; }
+.sd-sec[open] summary::after { transform: rotate(45deg); }
+.sd-sec[open] summary svg { stroke: var(--cyan); }
+.sd-inner { padding: 2px 4px 14px 34px; display: flex; flex-direction: column; gap: 8px; }
+.sd-inner .wm-hint { margin: 2px 0; }
+
+/* the old pop-up styled these buttons through the bar; the panel is outside it now */
+#status-menu .status-actions button, #status-menu #status-backups button {
+  width: auto; height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, 0.05); color: var(--text); font-size: 13.5px; cursor: pointer;
+}
+#status-menu .status-actions button:hover, #status-menu #status-backups button:hover { background: rgba(255, 255, 255, 0.1); color: var(--white); }
+#status-menu h3 { margin: 0; }
+
+@media (prefers-reduced-motion: reduce) { .sd-sec summary::after { transition: none; } .sd-light { animation: none !important; } }
+
+/* ---- touch mode: bigger ---- */
+body.touch .sd-head { padding: 20px 16px 16px 22px; }
+body.touch #sd-summary b { font-size: 25px; }
+body.touch #sd-summary small { font-size: 17px; }
+body.touch .sd-light { width: 22px; height: 22px; }
+body.touch .sd-close { width: 52px; height: 52px; }
+body.touch .sd-quick button { font-size: 16px; padding: 16px 4px 12px; }
+body.touch .sd-quick svg { width: 30px; height: 30px; }
+body.touch #status-rows li b { font-size: 19px; }
+body.touch #status-rows li span { font-size: 18px; }
+body.touch #status-rows li em { font-size: 16px; }
+body.touch #status-rows .sd-group { font-size: 14px; }
+body.touch #status-menu .sd-act { height: 46px; font-size: 16px; padding: 0 18px; }
+body.touch .sd-sec summary { padding: 18px 4px; }
+body.touch .sd-sec summary b { font-size: 20px; }
+body.touch .sd-sec summary small { font-size: 15px; }
+body.touch #status-menu .status-actions button, body.touch #status-menu #status-backups button { height: 48px; font-size: 18px; }
+
+/* rows that are fine take one line, so the whole list fits without scrolling; rows that need you keep room for what to do */
+#status-rows li[data-state="ok"], #status-rows li[data-state="idle"] { padding: 6px 10px; align-items: center; }
+#status-rows li[data-state="ok"] i, #status-rows li[data-state="idle"] i { margin-top: 0; }
+#status-rows li[data-state="ok"] div, #status-rows li[data-state="idle"] div { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+#status-rows li[data-state="ok"] b, #status-rows li[data-state="idle"] b { flex: 0 0 86px; font-weight: 500; color: var(--text); }
+#status-rows li[data-state="ok"] span, #status-rows li[data-state="idle"] span { flex: 1 1 120px; color: var(--dim); font-size: 13px; }
+#status-rows li[data-state="idle"] em { flex: 1 1 100%; }
+body.touch #status-rows li[data-state="ok"] b, body.touch #status-rows li[data-state="idle"] b { flex-basis: 130px; }
+
+/* Working and Not in use fold away (one line each, with how many); what needs attention is always open */
+#status-rows .sd-group.toggle { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 2px; padding: 8px 10px; border-radius: 12px; cursor: pointer; }
+#status-rows .sd-group.toggle:hover { background: rgba(255, 255, 255, 0.05); color: var(--white); }
+#status-rows .sd-group.toggle::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim); transform: rotate(-45deg); transition: transform 0.15s; }
+#status-rows .sd-group.toggle[aria-expanded="true"]::after { transform: rotate(45deg); }
+#status-rows .sd-group.toggle:focus-visible { outline: 2px solid rgba(var(--accent-rgb), 0.7); outline-offset: 1px; }

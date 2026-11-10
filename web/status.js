@@ -1,7 +1,7 @@
-// The status light and its menu: is the server up, is the AI reachable, is voice on, is the pen tracker connected,
-// is the board saved. Also the board's export and backup tools, and the banner that shows when the server stops.
+// The status panel (on the left; it can be open next to the chat): one plain answer at the top ("Everything is working" or what needs a
+// look), the checks below it grouped as needs attention / working / not in use, each with what to do about it, and the settings in
+// sections you open when you want them. Also the board's export and backup tools, and the banner that shows when the server stops.
 
-import { fitMenu } from './menufit.js';
 
 const POLL_MS = 4000;
 const TIMES = { hour: 'numeric', minute: '2-digit' };
@@ -30,14 +30,37 @@ export class Status {
     this.fails = 0;
     this.backups = null;
 
+    this.phone = null;   // what /api/phone said last, read while the panel is open
+    this.expanded = new Set();   // which of the quieter groups (Working, Not in use) are opened; what needs attention is always shown
     button.addEventListener('click', () => this.toggle());
-    document.addEventListener('click', (e) => {
-      if (!this.menu.hidden && !this.menu.contains(e.target) && !this.button.contains(e.target)) this.toggle(false);
-    });
+    menu.querySelector('#status-close').addEventListener('click', () => this.toggle(false));
+    menu.querySelectorAll('[data-do]').forEach((b) => b.addEventListener('click', () => this.quick(b.dataset.do)));
+    // It is a panel like the chat, not a pop-up: it stays open while you draw or talk, and closes with its button, its ×, S or Esc.
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !this.menu.hidden && !e.target.closest('input, textarea, select')) this.toggle(false); });
     board.onSaveState = () => this.render();
     this.poll();
     setInterval(() => this.poll(), POLL_MS);
     setInterval(() => { if (!this.menu.hidden) this.render(); }, 1000);
+    setInterval(() => { if (!this.menu.hidden) this.loadPhone(); }, 15000);
+  }
+
+  async loadPhone() {
+    try { this.phone = await (await fetch('/api/phone', { cache: 'no-store' })).json(); } catch { this.phone = null; }
+    this.render();
+  }
+
+  /** The three quick actions at the top of the panel. */
+  quick(what) {
+    if (what === 'lock') document.getElementById('privacy-lock').click();
+    else if (what === 'picture') document.getElementById('export-png').click();
+    else if (what === 'pair') this.openPair();
+  }
+
+  openPair() {
+    const section = this.menu.querySelector('#sec-phone');
+    section.open = true;
+    document.getElementById('phone-show').click();
+    section.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   async poll() {
@@ -64,7 +87,9 @@ export class Status {
   toggle(open = this.menu.hidden) {
     this.menu.hidden = !open;
     this.button.classList.toggle('active', open);
-    if (open) { this.backups = null; this.render(); fitMenu(this.menu); this.onOpen?.(); }
+    this.button.setAttribute('aria-expanded', String(open));
+    document.body.classList.toggle('status-open', open);
+    if (open) { this.backups = null; this.render(); this.loadPhone(); this.onOpen?.(); }
   }
 
   /** 'ok', 'warn' or 'down' for the light on the dock. */
@@ -81,30 +106,104 @@ export class Status {
     this.button.dataset.level = level;
     this.banner.hidden = this.up !== false;
     if (this.menu.hidden) return;
-
-    const i = this.info || {};
-    const saved = { saving: 'Saving…', offline: 'Not saved to the PC (server offline). Kept in this browser for now.' }[this.board.saveState]
-      || (this.board.lastSaved ? `Saved ${new Date(this.board.lastSaved).toLocaleTimeString([], TIMES)}` : 'Not changed yet');
-    const left = i.openrouter ? Math.max(0, i.openrouter.limit - i.openrouter.used_today) : null;
-    const rows = [
-      ['Server', this.up === false ? 'Not running' : this.up ? 'Running' : 'Checking…', this.up ? 'ok' : this.up === false ? 'down' : 'warn'],
-      ['AI', !this.up ? '—' : !i.key_set ? `No API key (add ${i.key_env || 'a key'} to .env)` : `${i.model || 'ready'}${left != null ? ` · about ${left} free requests left today` : ` · ${i.requests_today} requests today`}`,
-        !this.up ? 'warn' : i.key_set ? 'ok' : 'warn'],
-      ['Voice', !this.voice.supported ? 'Needs Chrome or Edge' : this.voice.enabled ? 'Listening for “Jarvis”' : 'Off (press M)', this.voice.enabled ? 'ok' : 'idle'],
-      ['Pen tracker', this.pen.trackerUp ? `Connected${this.pen.camera ? ` (${this.pen.camera})` : ''}` : 'Not running', this.pen.trackerUp ? 'ok' : 'idle'],
-      ['System', !this.up ? '—' : i.alerts ? `${i.alerts} problem${i.alerts > 1 ? 's' : ''} found: see the red notes` : 'No problems found', i.alerts ? 'warn' : 'ok'],
-      ['Board', saved, this.board.saveState === 'offline' ? 'warn' : 'ok'],
-    ];
-    const list = this.menu.querySelector('#status-rows');
-    list.replaceChildren(...rows.map(([name, text, state]) => {
-      const li = document.createElement('li');
-      li.dataset.state = state;
-      li.append(Object.assign(document.createElement('i'), {}), Object.assign(document.createElement('b'), { textContent: name }),
-        Object.assign(document.createElement('span'), { textContent: text }));
-      return li;
-    }));
+    const rows = this.checks();
+    this.renderSummary(rows);
+    this.renderRows(rows);
     this.renderMcp();
     this.renderBackups();
+  }
+
+  /** Every check as {name, text, state: ok|warn|down|idle, hint, act}. */
+  checks() {
+    const i = this.info || {};
+    const up = this.up;
+    const rows = [];
+    const since = i.started ? new Date(i.started * 1000).toLocaleTimeString([], TIMES) : '';
+    rows.push({ name: 'JARVIS', state: up === false ? 'down' : up ? 'ok' : 'warn', text: up === false ? 'Not running' : up ? `Running${since ? ` since ${since}` : ''}` : 'Checking…',
+      hint: up === false ? 'Start it with JARVIS.bat on the PC. Your drawing is safe in this browser until it is back.' : '' });
+
+    const left = i.openrouter ? Math.max(0, i.openrouter.limit - i.openrouter.used_today) : null;
+    rows.push({ name: 'AI', state: !up ? 'warn' : i.key_set ? 'ok' : 'warn',
+      text: !up ? 'Waiting for JARVIS' : !i.key_set ? 'No API key' : `${i.model || 'Ready'} · ${left != null ? `about ${left} free requests left today` : `${i.requests_today} requests today`}`,
+      hint: up && !i.key_set ? `Add ${i.key_env || 'an API key'} to the .env file, then restart JARVIS.` : '' });
+
+    if (!this.voice.supported) rows.push({ name: 'Voice', state: 'warn', text: 'Needs Chrome or Edge', hint: 'Open JARVIS in Chrome or Edge to talk to it. You can still type.' });
+    else if (this.voice.enabled) rows.push({ name: 'Voice', state: 'ok', text: 'Listening for “Jarvis”' });
+    else rows.push({ name: 'Voice', state: 'idle', text: 'Off', act: { label: 'Turn on', run: () => this.voice.toggle() } });
+
+    const w = i.wake || {};
+    if (w.running) rows.push({ name: 'Wake word', state: 'ok', text: `Hears “Jarvis” on this PC${w.device ? ` · ${w.device.trim().replace(/\s*\($/, '')}` : ''}` });
+    else if (w.error) rows.push({ name: 'Wake word', state: 'warn', text: 'Not running', hint: w.error });
+
+    const ph = this.phone;
+    if (ph?.running) rows.push({ name: 'Phone', state: 'ok', text: ph.paired.length ? `${ph.paired.length} paired` : 'Ready, none paired yet', act: { label: 'Pair a phone', run: () => this.openPair() } });
+    else if (ph) rows.push({ name: 'Phone', state: 'idle', text: 'Off', hint: ph.error || '' });
+
+    if (i.lights) rows.push({ name: 'Lights', state: 'ok', text: `${i.lights} set up` });
+    if (i.speakers) rows.push({ name: 'Speakers', state: 'ok', text: `${i.speakers} found` });
+
+    rows.push({ name: 'Pen tracker', state: this.pen.trackerUp ? 'ok' : 'idle', text: this.pen.trackerUp ? `Connected${this.pen.camera ? ` (${this.pen.camera})` : ''}` : 'Not running',
+      hint: this.pen.trackerUp ? '' : 'Start run_tracker.bat to draw with the pen on the wall.' });
+    rows.push({ name: 'This PC', state: !up ? 'idle' : i.alerts ? 'warn' : 'ok', text: !up ? '—' : i.alerts ? `${i.alerts} problem${i.alerts > 1 ? 's' : ''} found` : 'No problems found',
+      hint: i.alerts ? 'The red notes on the board say what.' : '' });
+
+    const saved = { saving: 'Saving…', offline: 'Not saved to the PC (server offline)' }[this.board.saveState]
+      || (this.board.lastSaved ? `Saved ${new Date(this.board.lastSaved).toLocaleTimeString([], TIMES)}` : 'Nothing to save yet');
+    rows.push({ name: 'Board', state: this.board.saveState === 'offline' ? 'warn' : 'ok', text: saved, hint: this.board.saveState === 'offline' ? 'It is kept in this browser and is saved to the PC as soon as JARVIS is back.' : '' });
+    return rows;
+  }
+
+  /** The headline: one sentence that answers "is everything OK?". */
+  renderSummary(rows) {
+    const bad = rows.filter((r) => r.state === 'warn' || r.state === 'down');
+    const box = this.menu.querySelector('#sd-summary');
+    const i = this.info || {};
+    let level = 'ok', headline, sub;
+    if (this.up === false) { level = 'down'; headline = 'JARVIS isn’t running'; sub = 'Start it with JARVIS.bat. Your drawing is safe.'; }
+    else if (this.up === null) { level = 'warn'; headline = 'Checking…'; sub = ''; }
+    else if (bad.length) { level = 'warn'; headline = bad.length === 1 ? '1 thing to look at' : `${bad.length} things to look at`; sub = bad.map((r) => r.name).join(', '); }
+    else { headline = 'Everything is working'; sub = i.model ? `${i.model} · ${i.requests_today} requests today` : ''; }
+    box.dataset.level = level;
+    this.menu.querySelector('#sd-headline').textContent = headline;
+    this.menu.querySelector('#sd-sub').textContent = sub;
+  }
+
+  renderRows(rows) {
+    const groups = [['Needs attention', rows.filter((r) => r.state === 'warn' || r.state === 'down')],
+      ['Working', rows.filter((r) => r.state === 'ok')], ['Not in use', rows.filter((r) => r.state === 'idle')]];
+    const list = this.menu.querySelector('#status-rows');
+    const items = [];
+    for (const [title, group] of groups) {
+      if (!group.length) continue;
+      const quiet = title !== 'Needs attention';
+      const open = !quiet || this.expanded.has(title);
+      const head = Object.assign(document.createElement(quiet ? 'li' : 'li'), { className: `sd-group${quiet ? ' toggle' : ''}`, textContent: quiet ? `${title} · ${group.length}` : title });
+      if (quiet) {
+        head.tabIndex = 0;
+        head.setAttribute('role', 'button');
+        head.setAttribute('aria-expanded', String(open));
+        const flip = () => { if (this.expanded.has(title)) this.expanded.delete(title); else this.expanded.add(title); this.render(); };
+        head.addEventListener('click', flip);
+        head.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+      }
+      items.push(head);
+      if (!open) continue;
+      for (const r of group) {
+        const li = document.createElement('li');
+        li.dataset.state = r.state;
+        const text = document.createElement('div');
+        text.append(Object.assign(document.createElement('b'), { textContent: r.name }), Object.assign(document.createElement('span'), { textContent: r.text }));
+        if (r.hint) text.append(Object.assign(document.createElement('em'), { textContent: r.hint }));
+        li.append(document.createElement('i'), text);
+        if (r.act) {
+          const btn = Object.assign(document.createElement('button'), { type: 'button', textContent: r.act.label, className: 'sd-act' });
+          btn.addEventListener('click', r.act.run);
+          li.append(btn);
+        }
+        items.push(li);
+      }
+    }
+    list.replaceChildren(...items);
   }
 
   renderMcp() {

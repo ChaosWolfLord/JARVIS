@@ -5,7 +5,7 @@ import { Fit } from './fit.js';
 import { PenInput } from './pen.js';
 import { Keyboard } from './keyboard.js';
 import { Orb } from './orb.js';
-import { dockMenus } from './dockmenus.js';
+import { dockMenus, watchDockSize } from './dockmenus.js';
 import { Usage } from './usage.js';
 import { Widgets } from './widgets.js';
 import { Weather } from './weather.js';
@@ -17,7 +17,6 @@ import { Music } from './music.js';
 import { Apps } from './apps.js';
 import { Alerts } from './alerts.js';
 import { PhoneLink } from './phonelink.js';
-import { fitMenu } from './menufit.js';
 import { Sounds } from './sounds.js';
 import { Boot } from './boot.js';
 import { Holo } from './holo.js';
@@ -259,6 +258,7 @@ widgets.restore();
 Object.assign(window.jarvis, { usage, weather, timers, widgets, system, lights: lightsUI, music: musicUI, sounds, holo, showoff });
 const status = new Status({ button: $('btn-status'), menu: $('status-menu'), banner: $('offline-banner'), board, voice, pen, toast });
 dockMenus([{ button: $('btn-ink'), menu: $('ink-menu') }, { button: $('btn-more'), menu: $('more-menu'), closeOnChoice: true }]);
+watchDockSize($('toolbar'));
 $('export-png').addEventListener('click', () => status.exportPng());
 $('export-json').addEventListener('click', () => status.exportJson());
 $('show-backups').addEventListener('click', () => status.showBackups());
@@ -306,7 +306,7 @@ pen.onReminder = (m) => {
 // A phone paired with JARVIS asked for something that changes the wall (a note, a timer, a widget): do it here.
 pen.onPhoneEvent = (ev) => { ambient.poke(); chat.applyRemote(ev); };
 pen.onCommand = (text) => { ambient.poke(); showoff.handleVoice(text); };
-const phoneLink = new PhoneLink({ root: $('status-menu'), fit: () => fitMenu($('status-menu')) });
+const phoneLink = new PhoneLink({ root: $('status-menu'), fit: () => {} });
 status.onOpen = () => phoneLink.refresh();
 // "Claude has finished in JARVIS": announced by the Claude Code hook (see README, "Claude Code alerts").
 pen.onNotify = (m) => {
@@ -466,6 +466,7 @@ document.addEventListener('keydown', (e) => {
   else if (key === 'u') widgets.toggle('usage');
   else if (key === 'a') ambient.toggle();
   else if (key === 'h') privacy.lock();
+  else if (key === 's') status.toggle();
   else if (key === 'w') widgets.toggleMenu();
   else if (key === 't') setTouch(!document.body.classList.contains('touch'), true);
   else if (e.key === 'Tab') { e.preventDefault(); togglePanel(); }
