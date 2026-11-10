@@ -294,6 +294,7 @@ pen.onReminder = (m) => {
 };
 // A phone paired with JARVIS asked for something that changes the wall (a note, a timer, a widget): do it here.
 pen.onPhoneEvent = (ev) => { ambient.poke(); chat.applyRemote(ev); };
+pen.onCommand = (text) => { ambient.poke(); showoff.handleVoice(text); };
 const phoneLink = new PhoneLink({ root: $('status-menu'), fit: () => fitMenu($('status-menu')) });
 status.onOpen = () => phoneLink.refresh();
 // "Claude has finished in JARVIS": announced by the Claude Code hook (see README, "Claude Code alerts").

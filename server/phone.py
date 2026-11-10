@@ -359,7 +359,8 @@ def wall_line(ev: dict) -> str:
 
 def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcast: Callable[[dict], None],
               is_locked: Callable[[], bool] = lambda: False, events: "Events | None" = None,
-              on_events_connect: Callable[[], None] | None = None, apk: Path | None = None, reminder_store=None) -> FastAPI:
+              on_events_connect: Callable[[], None] | None = None, apk: Path | None = None, reminder_store=None,
+              local_command: Callable[[str], dict] | None = None) -> FastAPI:
     events = events if events is not None else Events()
     apk = apk or APK_FILE
     saved = reminder_store or reminders_mod.reminders
@@ -521,6 +522,18 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
 
         def events():
             reply, summary = [], ""
+            if local_command and not req.private:                # show off, lights, music, apps: answered here, instantly, without an AI request
+                try:
+                    done = local_command(req.message)
+                except Exception:  # noqa: BLE001 - a broken shortcut falls through to the AI
+                    done = None
+                if done and done.get("handled"):
+                    text = str(done.get("text") or "Done.")
+                    yield f"data: {json.dumps({'type': 'text', 'delta': text})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'requests': 0, 'model': 'this PC'})}\n\n"
+                    if req.show:
+                        broadcast({"type": "notify", "title": f"Phone: {req.message[:60]}", "text": text[:300], "speak": text[:400] if req.speak else ""})
+                    return
             try:
                 for ev in chat_turn(req.message, history, None, cancel, "", req.private):
                     kind = ev.get("type")
@@ -582,7 +595,8 @@ class PhoneService:
             ip = self.ip or ip
         return f"{'https' if self.tls else 'http'}://{ip}:{self.port}"
 
-    def start(self, chat_turn, broadcast, is_locked, port: int = 8443, tls: bool = True, host: str = "0.0.0.0", on_events_connect=None, apk: Path | None = None) -> None:
+    def start(self, chat_turn, broadcast, is_locked, port: int = 8443, tls: bool = True, host: str = "0.0.0.0", on_events_connect=None, apk: Path | None = None,
+              local_command=None) -> None:
         import uvicorn
         self.ip, self.port, self.tls, self.error = lan_ip(), port, tls, ""
         try:
@@ -590,7 +604,7 @@ class PhoneService:
             if tls:
                 cert, key = ensure_cert(self.ip)
                 kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
-            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store)
+            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store, local_command)
             self.server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False, **kwargs))
         except Exception as e:  # noqa: BLE001 - a phone door that can't start must never stop JARVIS starting
             self.error = f"{e.__class__.__name__}: {e}"

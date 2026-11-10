@@ -32,6 +32,17 @@ class MusicError(Exception):
     """Something the user can act on; the message says what."""
 
 
+def _local_ip() -> str:
+    """This PC's address on the current network (nothing is sent). It changes when the PC joins another Wi-Fi."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("10.255.255.255", 1))
+            return sock.getsockname()[0]
+    except OSError:
+        return ""
+
+
 # ---- the real speakers and YouTube Music ------------------------------------------------------------
 
 class CastBackend:
@@ -42,6 +53,7 @@ class CastBackend:
         self.casts: dict = {}
         self.browser = None
         self.found_at = 0.0
+        self.network = ""
         self.handlers: dict = {}
         self._yt = None
 
@@ -66,7 +78,7 @@ class CastBackend:
                 casts, browser = pc.get_chromecasts(timeout=6)
             except Exception as e:  # noqa: BLE001
                 raise MusicError(f"couldn't look for speakers on the network ({e.__class__.__name__}).") from None
-            self.browser, self.found_at = browser, time.time()
+            self.browser, self.found_at, self.network = browser, time.time(), _local_ip()
             self.casts = {c.cast_info.friendly_name.strip(): c for c in casts}
             self.handlers = {}
 
@@ -75,15 +87,25 @@ class CastBackend:
         return [{"name": n, "kind": getattr(c.cast_info, "cast_type", "") or "cast"} for n, c in self.casts.items()]
 
     def _cast(self, name: str):
+        """The connected speaker. If the old connection is dead (the PC moved to another Wi-Fi, or the speaker was off and came back) it looks
+        again once instead of failing with the same stale connection until the list expires: that is what made music fail in a demo."""
+        if self.casts and self.network and _local_ip() != self.network:
+            self.refresh(force=True)                       # the PC is on another network than when the speakers were found
         self.refresh()
-        cast = self.casts.get(name)
-        if not cast:
-            self.refresh(force=True)
+        for attempt in (1, 2):
             cast = self.casts.get(name)
-        if not cast:
-            raise MusicError(f"I can't find a speaker called {name}. Is it on and on the same Wi-Fi?")
-        cast.wait(timeout=8)
-        return cast
+            if not cast:
+                self.refresh(force=True)
+                cast = self.casts.get(name)
+            if not cast:
+                raise MusicError(f"I can't find a speaker called {name}. Is it on and on the same Wi-Fi?")
+            try:
+                cast.wait(timeout=8)
+                return cast
+            except Exception:  # noqa: BLE001 - a timeout or a closed connection: look for the speaker again
+                if attempt == 2:
+                    raise MusicError(f"{name} isn't answering. Is it on, and on the same Wi-Fi as this PC?") from None
+                self.refresh(force=True)
 
     def search(self, query: str) -> dict:
         ym = self._import("ytmusicapi")
@@ -107,17 +129,21 @@ class CastBackend:
             raise MusicError(f"YouTube Music search failed ({e.__class__.__name__}). It may have changed; try again later.") from None
 
     def play(self, device: str, video_id: str, playlist_id: str | None) -> None:
-        cast = self._cast(device)
         from_pc = self._import("pychromecast.controllers.youtube")
-        with self.lock:
-            handler = self.handlers.get(device)
-            if handler is None:
-                handler = self.handlers[device] = from_pc.YouTubeController()
-                cast.register_handler(handler)
-        try:
-            handler.play_video(video_id, playlist_id=playlist_id)
-        except Exception as e:  # noqa: BLE001
-            raise MusicError(f"the speaker didn't accept that ({e.__class__.__name__}).") from None
+        for attempt in (1, 2):
+            cast = self._cast(device)
+            with self.lock:
+                handler = self.handlers.get(device)
+                if handler is None:
+                    handler = self.handlers[device] = from_pc.YouTubeController()
+                    cast.register_handler(handler)
+            try:
+                handler.play_video(video_id, playlist_id=playlist_id)
+                return
+            except Exception as e:  # noqa: BLE001
+                if attempt == 2:
+                    raise MusicError(f"the speaker didn't accept that ({e.__class__.__name__}).") from None
+                self.refresh(force=True)                  # a stale connection: connect again and try once more
 
     def control(self, device: str, what: str) -> None:
         mc = self._cast(device).media_controller

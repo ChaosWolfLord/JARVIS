@@ -48,6 +48,72 @@ class Models(unittest.TestCase):
         self.assertEqual(ev["vertices"], [1000.0, -1000.0, 5.0])
 
 
+class Assemblies(unittest.TestCase):
+    """A cat is easier to ask a model for as "a body, a head, two ears, legs and a tail" than as raw coordinates."""
+    CAT = [{"type": "sphere", "w": 1.6, "h": 0.8, "d": 0.7}, {"type": "sphere", "x": 1, "y": 0.35, "w": 0.7, "h": 0.65, "d": 0.65},
+           {"type": "cone", "x": 1.1, "y": 0.8, "z": 0.2, "w": 0.2, "h": 0.3, "d": 0.2}, {"type": "cone", "x": 1.1, "y": 0.8, "z": -0.2, "w": 0.2, "h": 0.3, "d": 0.2},
+           {"type": "cylinder", "x": -1, "y": 0.3, "w": 0.15, "h": 0.9, "d": 0.15, "rz": 50}]
+
+    def test_parts_become_one_model_the_page_already_understands(self):
+        ev = holo.model_event({"shape": "assembly", "parts": self.CAT, "title": "Cat"})
+        self.assertEqual((ev["type"], ev["kind"], ev["shape"], ev["title"]), ("holo", "model", "custom", "Cat"))
+        count = len(ev["vertices"]) // 3
+        self.assertEqual(count, 26 + 26 + 9 + 9 + 16)
+        self.assertTrue(all(0 <= i < count for i in ev["edges"]))
+        self.assertEqual(len(ev["edges"]) % 2, 0)
+
+    def test_every_kind_of_part_is_a_closed_little_wireframe(self):
+        for kind in holo.PARTS:
+            v, e = holo._primitive(kind)
+            self.assertTrue(v and e, kind)
+            used = {i for pair in e for i in pair}
+            self.assertEqual(used, set(range(len(v))), f"{kind}: every vertex is joined to something")
+
+    def test_position_size_and_turn_are_applied(self):
+        v, _ = holo.assembly([{"type": "box", "x": 5, "y": 0, "z": 0, "w": 2, "h": 4, "d": 6}])
+        xs, ys, zs = v[0::3], v[1::3], v[2::3]
+        self.assertEqual((min(xs), max(xs)), (4.0, 6.0))
+        self.assertEqual((min(ys), max(ys)), (-2.0, 2.0))
+        self.assertEqual((min(zs), max(zs)), (-3.0, 3.0))
+        turned, _ = holo.assembly([{"type": "box", "w": 2, "h": 2, "d": 2, "rz": 90}])
+        self.assertAlmostEqual(max(turned[0::3]), 1.0)
+
+    def test_parts_without_a_known_shape_still_work(self):
+        self.assertEqual(holo.model_event({"shape": "cat", "parts": self.CAT})["shape"], "custom")
+
+    def test_mistakes_are_explained_so_the_model_can_fix_them(self):
+        for bad in ({"shape": "assembly"}, {"shape": "assembly", "parts": []}, {"shape": "assembly", "parts": ["a cat"]},
+                    {"shape": "assembly", "parts": [{"type": "dragon"}]}, {"shape": "assembly", "parts": [{"type": "box", "x": "left"}]}):
+            with self.assertRaises(holo.HoloError, msg=str(bad)):
+                holo.model_event(bad)
+        with self.assertRaisesRegex(holo.HoloError, "assembly"):
+            holo.model_event({"shape": "cat"})                                    # the message points at assembly
+
+    def test_too_detailed_is_refused_and_extra_parts_ignored(self):
+        many = [{"type": "sphere"}] * 40
+        ev = holo.model_event({"shape": "assembly", "parts": many})
+        self.assertEqual(len(ev["vertices"]) // 3, 26 * holo.MAX_PARTS)
+
+    def test_sizes_and_positions_are_kept_sane(self):
+        v, _ = holo.assembly([{"type": "box", "x": 1e9, "w": 1e9, "h": -5}])
+        self.assertLessEqual(max(abs(n) for n in v), 50 + 10)
+
+    def test_a_custom_model_forgives_the_usual_slips(self):
+        ev = holo.model_event({"shape": "custom", "vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]], "edges": [[0, 1], [1, 2], [2, 9]]})
+        self.assertEqual(ev["edges"], [0, 1, 1, 2])                                   # nested lists are accepted, an edge to nowhere is skipped
+        ev = holo.model_event({"shape": "custom", "vertices": [0, 0, 0, 1, 0, 0, 7], "edges": [0, 1, 1]})
+        self.assertEqual((len(ev["vertices"]), ev["edges"]), (6, [0, 1]))               # a stray number at the end is dropped
+
+    def test_the_ai_is_offered_assembly(self):
+        tool = next(t for t in agent.active_tools() if t["function"]["name"] == "hologram")
+        props = tool["function"]["parameters"]["properties"]
+        self.assertIn("assembly", props["shape"]["enum"])
+        self.assertEqual(props["parts"]["items"]["properties"]["type"]["enum"], list(holo.PARTS))
+        text, event = agent._run_client_tool("hologram", {"shape": "assembly", "parts": self.CAT})
+        self.assertIn("on the board", text)
+        self.assertEqual(event["shape"], "custom")
+
+
 class Charts(unittest.TestCase):
     def test_a_good_chart(self):
         ev = holo.chart_event({"type": "bar", "title": "T", "labels": ["a", "b"], "values": [1, "2.5"], "unit": "GB"})

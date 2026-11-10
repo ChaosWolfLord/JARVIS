@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import agent, audit, claude_usage, diagnostics, fixes, guard, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, privacy, reminders as reminders_mod, runner, store, wakeword
+from . import agent, audit, claude_usage, diagnostics, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, privacy, reminders as reminders_mod, runner, store, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -36,10 +36,14 @@ async def lifespan(_app):
     if os.getenv("JARVIS_MUSIC", "1") != "0":
         threading.Thread(target=find_speakers, daemon=True, name="speakers").start()
     if os.getenv("JARVIS_PHONE", "1") != "0":
+        def tell_page(event: dict) -> None:
+            asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop)
+
         phone_service.start(
             agent.chat_turn,
-            lambda event: asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop),
+            tell_page,
             privacy.locked,
+            local_command=lambda text: localcmd.handle(text, tell_page),
             on_events_connect=lambda: courier.deliver_due(),      # a phone just opened its page: hand over reminders that were waiting for it
             port=int(os.getenv("JARVIS_PHONE_PORT", "8443")),
             tls=os.getenv("JARVIS_PHONE_TLS", "1") != "0",

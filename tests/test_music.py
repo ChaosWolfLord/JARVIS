@@ -224,5 +224,49 @@ class VoiceAndTool(unittest.TestCase):
             self.assertEqual(main.get_music()["devices"][0]["name"], "Kitchen speaker")
 
 
+class DeadConnection(unittest.TestCase):
+    """A speaker connection that died (the PC changed Wi-Fi, the speaker slept) must be found again, not fail until the list expires."""
+
+    class Cast:
+        def __init__(self, name, alive):
+            self.cast_info = type("Info", (), {"friendly_name": name, "cast_type": "cast"})()
+            self.alive, self.registered = alive, []
+
+        def wait(self, timeout=None):
+            if not self.alive:
+                raise TimeoutError("Execution of wait timed out")
+
+        def register_handler(self, handler):
+            self.registered.append(handler)
+
+    def backend(self, rounds):
+        """A CastBackend whose network look-ups hand out the given casts, one list per look."""
+        be = music.CastBackend()
+        looks = iter(rounds)
+        fake_pc = type("PC", (), {"get_chromecasts": staticmethod(lambda timeout=6: (next(looks), object())),
+                                  "discovery": type("D", (), {"stop_discovery": staticmethod(lambda b: None)})()})
+        be._import = lambda name: fake_pc if name == "pychromecast" else type("YT", (), {"YouTubeController": lambda: type("C", (), {"play_video": lambda self, v, playlist_id=None: None})()})
+        return be
+
+    def test_a_dead_connection_is_replaced_by_a_fresh_one(self):
+        dead, fresh = self.Cast("Cove", alive=False), self.Cast("Cove", alive=True)
+        be = self.backend([[dead], [fresh]])
+        self.assertIs(be._cast("Cove"), fresh)
+
+    def test_a_speaker_that_never_answers_gives_a_message_not_a_traceback(self):
+        be = self.backend([[self.Cast("Cove", alive=False)], [self.Cast("Cove", alive=False)]])
+        with self.assertRaises(music.MusicError) as e:
+            be._cast("Cove")
+        self.assertIn("isn't answering", str(e.exception))
+
+    def test_a_new_network_forces_a_new_look(self):
+        old, new = self.Cast("Cove", alive=True), self.Cast("Cove", alive=True)
+        be = self.backend([[old], [new]])
+        with mock.patch.object(music, "_local_ip", return_value="192.168.1.5"):
+            be.refresh()
+        with mock.patch.object(music, "_local_ip", return_value="192.168.86.120"):
+            self.assertIs(be._cast("Cove"), new)
+
+
 if __name__ == "__main__":
     unittest.main()

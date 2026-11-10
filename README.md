@@ -8,6 +8,17 @@ Projected AI whiteboard. See [PLAN.md](PLAN.md) for the full build plan. This is
 2. Copy `.env.example` to `%LOCALAPPDATA%\jarvis\.env` (type that into the File Explorer address bar; it's outside OneDrive) and paste the key after `GEMINI_API_KEY=`. A `.env` in the project folder still works.
 3. Double-click **`JARVIS.bat`**. It creates a Python environment in `%LOCALAPPDATA%\jarvis\venv` (outside OneDrive), installs the requirements, starts the server, and opens the board in its own full-screen window. See "Keeping JARVIS running" below. (`run.bat` still works: it runs the server in a visible window and opens your normal browser.)
 
+## Showing JARVIS to people
+
+Run **`tools\demo_check.bat`** a few minutes before. It checks, in plain words, the things that went wrong in the first demo: the Wi-Fi the PC is on (the lights and speakers only work on their own network), how much of each AI model's free allowance is left and how fast it answers right now, the lights, the speakers, the wake word and the phone door. It plays no music and changes no light, and uses one small AI request.
+
+What a demo showed, and what changed:
+
+- **Slow answers.** Free AI models allow few requests a day. Every question used to send about 7,000 tokens of tools and instructions, so the quick models ran out (and the fast back-up on Groq could never answer: its free tier allows about 7,000 tokens a minute), and JARVIS fell through to a model that takes a minute or more. Now each request carries only the tools the message could need (`server/toolgate.py`: "what is the capital of France" sends about 3,000 tokens, "turn the lights blue" about 3,300), so Groq answers in 2 or 3 seconds as the back-up. `JARVIS_TOOLS=all` turns this off. Put **both** `GEMINI_API_KEY` and `GROQ_API_KEY` in `.env`; for a long demo, enabling billing on the Gemini key (pay as you go, pennies for this use) removes the daily limit.
+- **3D models came out as a cube or nonsense.** Models are poor at typing out coordinates but good at naming parts, so a model is now built from parts: the AI says "a sphere body, a sphere head, two cone ears, a cylinder tail, four cylinder legs" with positions and sizes, and `server/holo.py` turns that into one wireframe (a cat is 150 points). It also forgives the usual slips in a hand-typed model (nested lists, an edge to a vertex that doesn't exist) instead of failing.
+- **Commands from the phone went to the AI.** "Show off", "play ...", "lights off" and "open ..." typed or spoken in the phone app are now handled by the PC itself, instantly and without an AI request (`server/localcmd.py`). Show off could only ever work on the PC's own page; the phone now tells the page to start it.
+- **Music failed with a timeout.** The connection to a speaker could go stale (the PC changed Wi-Fi, or the speaker slept) and every song then failed until the list of speakers expired hours later. Music now looks for the speaker again once and retries, and also looks again as soon as the PC's network address changes.
+
 ## Keeping JARVIS running
 
 `JARVIS.bat` starts a small supervisor that runs the server and **starts it again within a few seconds if it ever stops**, opens the board in a full-screen app window (Chrome or Edge, in its own profile so the microphone permission is remembered and sound plays without a first click), and shows nothing else on screen. Starting it again while JARVIS is running just opens the window again.
