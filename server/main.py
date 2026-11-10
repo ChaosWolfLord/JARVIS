@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import agent, audit, claude_usage, diagnostics, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, privacy, reminders as reminders_mod, runner, store, wakeword
+from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, privacy, reminders as reminders_mod, runner, store, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -402,7 +402,12 @@ def get_apps():
 
 @app.post("/api/apps/voice")
 def voice_apps(req: SpokenLight):
-    """"Open Discord": handled here with no AI request. Anything that isn't an app the PC knows is left for the AI."""
+    """"Open Discord" or "open youtube.com": handled here with no AI request. A website opens in Chrome; an app opens from the Start Menu;
+    anything else is left for the AI."""
+    result = browser_mod.handle_voice(req.text)
+    if result["handled"]:
+        audit.record("browser", req.text[:100], "ok" if result.get("ok") else "error")
+        return result
     result = apps_mod.handle_voice(req.text) if apps_mod.available() else {"handled": False, "text": ""}
     if result["handled"]:
         audit.record("apps", f"open {req.text[:80]}", "ok" if result.get("ok") else "error")

@@ -1,8 +1,8 @@
-// Spoken "open Discord", "launch Spotify": handled on the PC without asking the AI (instant, uses no free requests). Only ordinary apps
-// from the Start Menu can be opened this way; anything else ("open the weather", "start a timer", an app the PC doesn't have) is passed
+// Spoken "open Discord", "launch Spotify", "open youtube.com": handled on the PC without asking the AI (instant, uses no free requests). A website
+// opens in Chrome (web addresses only); only ordinary apps from the Start Menu can be opened this way; anything else ("open the weather", "start a timer", an app the PC doesn't have) is passed
 // on to the AI as usual. Closing an app is never a voice shortcut: it goes through the AI and shows an Allow card first.
 
-const OPEN_TALK = /^(?:please |can you |could you |hey )?(?:jarvis[ ,]*)?(?:open|launch|start)\b/i;
+const OPEN_TALK = /^(?:please |can you |could you |hey )?(?:jarvis[ ,]*)?(?:open|launch|start|go to|visit|browse to|pull up|navigate to|take me to)\b/i;
 
 export class Apps {
   constructor({ speak }) {

@@ -32,6 +32,9 @@ GROUPS: dict[str, tuple[frozenset, re.Pattern, tuple[str, ...]]] = {
     "google": (frozenset({"calendar_events", "calendar_add_event", "gmail_search", "gmail_read", "gmail_draft_reply", "discord_channels", "discord_read", "discord_send"}),
                re.compile(r"\b(mail|e-?mails?|gmail|inbox|unread|calendar|schedule|meetings?|events?|appointments?|agenda|today|tomorrow|reply|draft|"
                           r"discord|channels?|messages?|servers?|dm)\b"), ("calendar_events",)),
+    "browser": (frozenset({"open_url"}),
+                re.compile(r"\b(open|go to|visit|browse|navigate|pull up|take me|site|sites|website|webpage|web page|page|url|link|http|https|www|chrome|browser|google|"
+                           r"youtube|wikipedia|github|reddit|amazon|search|look up|\.com|\.org|\.net|\.io)\b|\.(?:com|org|net|io|dev|edu|gov)\b"), ("open_url",)),
     "display": (frozenset({"hologram", "chart", "headlines"}),
                 re.compile(r"\b(3-?d|holograms?|holo|models?|wireframes?|shapes?|rotat\w*|charts?|graphs?|plots?|pie|bars?|radar|visuali[sz]\w*|cube|sphere|torus|"
                            r"helix|globe|reactor|show|display|news|headlines?|ticker|happening)\b"), ("hologram",)),
