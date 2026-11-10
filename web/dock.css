@@ -1,0 +1,150 @@
+/* The bottom bar. One slim glass bar with three parts:
+     left   DRAW   Pen, Eraser, Colour (opens colour and thickness) · BOARD  Note, Undo, Redo, Clear
+     middle the JARVIS orb: tap it to turn the voice on or off, or to stop JARVIS while it talks (orb.js draws it)
+     right  JARVIS Chat, Cards, Status, More (everything rarely used lives in More, each with a line saying what it does)
+   Every button says what it is under its icon. It uses the colour variables of whichever look is on, so it follows Modern and Classic.
+   Loaded after style.css and modern.css, and written to win over their older rules for the dock. */
+
+#toolbar {
+  position: absolute; left: 0; right: 0; bottom: 12px; margin: 0 auto; z-index: 5;
+  width: calc(100% - 24px); max-width: 1180px; height: 92px; padding: 0 14px;
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(170px, 20vw, 230px) minmax(0, 1fr); align-items: center; gap: 0;
+  background: var(--glass); border: 1px solid var(--line); border-radius: 28px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.38), 0 0 22px rgba(var(--accent-rgb), 0.1);
+  backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4);
+}
+#toolbar .dock-side, html.modern #toolbar .dock-side {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 0; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none; min-width: 0;
+}
+#toolbar .dock-left { justify-content: flex-start; }
+#toolbar .dock-right { justify-content: flex-end; }
+#toolbar .dock-group { display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; padding: 0 10px; }
+#toolbar .dock-group + .dock-group { border-left: 1px solid var(--line); }
+#toolbar .dock-group:first-child { padding-left: 0; }
+#toolbar .dock-group:last-child { padding-right: 0; }
+
+/* ---- the buttons: an icon with its name under it ---- */
+#toolbar .dock-btn, html.modern #toolbar .dock-btn {
+  position: relative; width: 62px; height: 64px; padding: 6px 2px 4px; border: 1px solid transparent; border-radius: 16px; background: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; cursor: pointer;
+  color: var(--dim); font-size: 12px; line-height: 1; letter-spacing: 0.2px; transition: background 0.15s, color 0.15s, transform 0.12s;
+}
+#toolbar .dock-btn svg {
+  width: 23px; height: 23px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+#toolbar .dock-btn span { display: block; white-space: nowrap; font-weight: 500; }
+#toolbar .dock-btn:hover { background: rgba(255, 255, 255, 0.07); color: var(--white); }
+#toolbar .dock-btn:active { transform: scale(0.94); }
+#toolbar .dock-btn:focus-visible { outline: 2px solid rgba(var(--accent-rgb), 0.7); outline-offset: 2px; }
+#toolbar .dock-btn.active, html.modern #toolbar .dock-btn.active, #toolbar .dock-btn[aria-expanded="true"] {
+  background: rgba(var(--accent-rgb), 0.16); border-color: transparent; color: var(--cyan); box-shadow: none;
+}
+/* the colour button shows the current pen colour */
+#toolbar .ink-dot { width: 22px; height: 22px; border-radius: 50%; background: var(--ink, var(--cyan)); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55); }
+#toolbar #btn-status .status-dot { right: 12px; top: 8px; }
+
+/* ---- the orb, rising out of the middle of the bar ---- */
+#toolbar #orb {
+  position: absolute; left: 50%; top: 0; width: 264px; height: 264px; margin: -140px 0 0 -132px; padding: 0; border: 0; border-radius: 50%;
+  background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; z-index: 2;
+}
+#toolbar #orb:hover, #toolbar #orb:focus-visible { background: none; outline: none; }
+#toolbar #orb:focus-visible { box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.6); }
+#orb-canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
+#orb-label {
+  position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 3; max-width: 90%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 12px; letter-spacing: 0.3px; color: var(--dim); pointer-events: none; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  transition: color 0.2s;
+}
+#toolbar #orb[data-state="ready"] ~ #orb-label, #toolbar #orb[data-state="listening"] ~ #orb-label { color: var(--cyan); }
+#toolbar #orb[data-state="speaking"] ~ #orb-label, #toolbar #orb[data-state="thinking"] ~ #orb-label { color: var(--white); }
+.mic-hidden { display: none !important; }               /* the voice toggle element stays (voice.js drives it); the orb is the button people use */
+
+/* ---- menus above the bar: colour and More, the same glass as the status and cards menus ---- */
+#toolbar .dock-menu {
+  position: absolute; bottom: 100%; margin-bottom: 14px; z-index: 30; width: 400px; max-width: 94vw; padding: 14px 16px;
+  background: rgba(2, 14, 20, 0.96); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 0 30px rgba(var(--accent-rgb), 0.2);
+  max-height: calc(100vh - 240px); overflow-y: auto; overscroll-behavior: contain;
+}
+html.modern #toolbar .dock-menu {
+  background: var(--surface); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); border-radius: 22px; box-shadow: var(--shadow); padding: 16px 18px;
+}
+#toolbar .dock-menu[hidden] { display: none; }
+#toolbar .dock-menu h3 { margin: 0 0 10px; font-weight: 400; letter-spacing: 4px; font-size: 14px; color: var(--cyan); }
+html.modern #toolbar .dock-menu h3 { text-transform: none; letter-spacing: 0.4px; font-size: 15px; font-weight: 600; color: var(--white); }
+#toolbar #ink-menu { left: 14px; width: 300px; }
+#toolbar #more-menu { right: 14px; }
+#toolbar .ink-size { display: flex; align-items: center; gap: 12px; margin-top: 14px; color: var(--dim); font-size: 14px; }
+#toolbar .ink-size input { flex: 1; width: auto; accent-color: var(--cyan); }
+#toolbar #ink-menu #swatches { display: flex; gap: 12px; padding: 2px 0; }
+#toolbar #ink-menu .swatch { width: 34px; height: 34px; border-radius: 50%; padding: 0; cursor: pointer; background: var(--sw); border: 2px solid rgba(8, 10, 16, 0.6); }
+#toolbar #ink-menu .swatch.active { box-shadow: 0 0 0 2px var(--white); }
+
+/* each row of More: icon, what it is, one line saying what it does, and its state when it has one */
+#toolbar .menu-row, html.modern #toolbar .menu-row {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; height: auto; padding: 10px 10px;
+  margin: 0 0 2px; border: 1px solid transparent; border-radius: 14px; background: none; text-align: left; color: var(--text); cursor: pointer; font-size: 15px;
+}
+#toolbar .menu-row:hover { background: rgba(255, 255, 255, 0.07); }
+#toolbar .menu-row svg { width: 24px; height: 24px; fill: none; stroke: var(--dim); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#toolbar .menu-row b { display: block; font-weight: 600; color: var(--white); font-size: 15px; }
+#toolbar .menu-row small { display: block; margin-top: 2px; color: var(--dim); font-size: 12.5px; line-height: 1.35; }
+#toolbar .menu-row .state {
+  display: none; font-style: normal; font-size: 12px; padding: 3px 10px; border-radius: 999px; background: rgba(var(--accent-rgb), 0.18); color: var(--cyan);
+}
+#toolbar .menu-row.active .state, #toolbar .menu-row.on .state { display: inline-block; }
+#toolbar .menu-row.active, html.modern #toolbar .menu-row.active, html.modern #toolbar .menu-row.on { background: none; box-shadow: none; border-color: transparent; color: var(--text); }
+#toolbar .menu-row.active svg, #toolbar .menu-row.on svg { stroke: var(--cyan); }
+
+/* the bubble above the orb now sits above the orb's top, not the bar's */
+#toolbar #orb-bubble { margin-bottom: 78px; }
+
+/* ---- touch mode: bigger everything, for the pen across the room ---- */
+body.touch #toolbar { height: 112px; max-width: 1500px; border-radius: 34px; grid-template-columns: minmax(0, 1fr) clamp(220px, 23vw, 310px) minmax(0, 1fr); }
+body.touch #toolbar .dock-btn { width: 74px; height: 86px; font-size: 15px; gap: 7px; border-radius: 20px; }
+body.touch #toolbar .dock-btn svg { width: 32px; height: 32px; }
+body.touch #toolbar .ink-dot { width: 30px; height: 30px; }
+body.touch #toolbar #orb { width: 310px; height: 310px; margin: -168px 0 0 -155px; }
+body.touch #orb-label { font-size: 17px; bottom: 12px; }
+body.touch #toolbar .dock-menu { width: 560px; }
+body.touch #toolbar #ink-menu { width: 420px; }
+body.touch #toolbar .menu-row { padding: 14px 12px; gap: 16px; grid-template-columns: 34px minmax(0, 1fr) auto; }
+body.touch #toolbar .menu-row svg { width: 32px; height: 32px; }
+body.touch #toolbar .menu-row b { font-size: 21px; }
+body.touch #toolbar .menu-row small { font-size: 16px; }
+body.touch #toolbar #ink-menu .swatch { width: 52px; height: 52px; }
+body.touch #toolbar .ink-size { font-size: 19px; }
+body.touch #toolbar .ink-size input { height: 44px; }
+body.touch #toolbar #orb-bubble { margin-bottom: 110px; }
+
+/* ---- narrow windows: drop the labels' width, keep the groups ---- */
+@media (max-width: 1000px) {
+  #toolbar { padding: 0 8px; grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1fr); }
+  #toolbar .dock-btn { width: 54px; }
+  #toolbar .dock-group { padding: 0 5px; }
+  #toolbar #orb { width: 210px; height: 210px; margin: -112px 0 0 -105px; }
+}
+
+/* ---- the calm wall and the keyboard: what faded or hid the old dock does the same to this one ---- */
+#toolbar { transition: opacity 1.2s ease, background 1.2s ease, border-color 1.2s ease, box-shadow 1.2s ease; }
+body.ambient #toolbar { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; pointer-events: none; }
+body.ambient #toolbar .dock-menu, body.ambient #orb-label { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) { #toolbar .dock-btn { transition: none; } }
+
+/* the orb, its label, the menus and the hidden voice toggle are all out of the flow: the two sides sit in the outer columns, the orb in the middle one */
+#toolbar .dock-left { grid-column: 1; }
+#toolbar .dock-right { grid-column: 3; }
+@media (max-width: 900px) {
+  #toolbar { grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); }
+  #toolbar .dock-btn { width: 46px; font-size: 11px; }
+  #toolbar .dock-group { padding: 0 3px; }
+  #toolbar #orb { width: 170px; height: 170px; margin: -92px 0 0 -85px; }
+}
+
+/* Only the sphere itself is the button: the empty corners of its canvas (which reaches over the board) let the pen through. */
+#toolbar #orb { pointer-events: none; }
+#toolbar #orb::after {
+  content: ""; position: absolute; left: 50%; top: 43%; width: 50%; height: 50%; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: auto; cursor: pointer;
+}

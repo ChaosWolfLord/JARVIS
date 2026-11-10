@@ -1,18 +1,41 @@
-// The JARVIS orb: a glowing ring with the name inside, drawn on a canvas. Around the ring is a circle of bars
-// that is also the voice visualizer: while the microphone is on they move with your voice (the volume sets how
-// tall they are and the pitch sets which bars move). The button's data-state decides the rest:
-//   idle      voice off: the ring breathes slowly
-//   ready     listening for "Jarvis": same, with the bars awake
-//   listening it heard its name and is waiting for the command: brighter ring
-//   thinking  waiting for the AI: the white arcs spin fast and the ring throbs
-//   speaking  JARVIS is talking: the bars dance by themselves and ripples leave the ring
+// The JARVIS orb: a small 3D sphere made of dots that turns slowly and moves with what the microphone hears.
+// Each dot belongs to a band of the sound (low notes around the equator, high ones toward the poles): when you speak the dots in
+// those bands push outward, so the whole sphere ripples with your voice, and it swells a little with the overall volume.
+// The button's data-state decides the rest:
+//   idle      voice off: dim, breathing slowly
+//   ready     listening for "Jarvis": brighter, it shimmers with the room
+//   listening it heard its name and is waiting for the command: bright and open
+//   thinking  waiting for the AI: spins fast and a wave runs through it, in the second colour
+//   speaking  JARVIS is talking: it pulses by itself
+// Nothing is recorded or sent: the microphone is only analysed here, to move the dots.
 
 import { orbPalette } from './theme.js';
 
 const TAU = Math.PI * 2;
-const BARS = 72;
-const HALF = BARS / 2;
+const DOTS = 760;
+const BANDS = 26;
+const STEPS = 14;                    // colour steps between quiet and loud; dots of one step are drawn in a single pass
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Points spread evenly over a sphere (a Fibonacci spiral), each with the band of sound it answers to and a private phase.
+const X = new Float32Array(DOTS), Y = new Float32Array(DOTS), Z = new Float32Array(DOTS);
+const BAND = new Uint8Array(DOTS), PHASE = new Float32Array(DOTS), SIZE = new Float32Array(DOTS);
+(() => {
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  let seed = 7;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < DOTS; i++) {
+    const y = 1 - (2 * (i + 0.5)) / DOTS;
+    const r = Math.sqrt(1 - y * y);
+    X[i] = Math.cos(golden * i) * r; Y[i] = y; Z[i] = Math.sin(golden * i) * r;
+    BAND[i] = Math.min(BANDS - 1, Math.floor(Math.abs(y) * BANDS));
+    PHASE[i] = rand() * TAU;
+    SIZE[i] = 0.75 + rand() * 0.5;
+  }
+})();
+
+const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 
 export class Orb {
   /** follow: another Orb whose microphone this one shares (the big calm-mode orb follows the one in the dock). */
@@ -21,17 +44,17 @@ export class Orb {
     this.button = button;
     this.follow = follow;
     this.ctx = canvas.getContext('2d');
-    this.bars = new Float32Array(BARS); // smoothed bar heights, 0..1
-    this.level = 0;                      // smoothed overall volume, 0..1
+    this.bands = new Float32Array(BANDS);      // smoothed loudness of each band, 0..1
+    this.level = 0;                            // smoothed overall volume, 0..1
     this._mic = null;
     this.micPending = false;
-    this.spinA = 0;
-    this.spinB = 2;
+    this.yaw = Math.random() * TAU;
     this.last = performance.now();
     this.size = 0;
+    this.ramp = null;
     this.resize();
     new ResizeObserver(() => this.resize()).observe(canvas);
-    window.addEventListener('jarvis-look', () => { this.palette = null; });   // the look was switched: pick the other colours up on the next frame
+    window.addEventListener('jarvis-look', () => { this.palette = null; this.ramp = null; });   // the look was switched: new colours on the next frame
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -63,11 +86,11 @@ export class Orb {
       ctx.resume?.();
       const an = ctx.createAnalyser();
       an.fftSize = 512;
-      an.smoothingTimeConstant = 0.55;
+      an.smoothingTimeConstant = 0.5;
       ctx.createMediaStreamSource(stream).connect(an);
       this.mic = { stream, ctx, an, freq: new Uint8Array(an.frequencyBinCount), wave: new Uint8Array(an.fftSize) };
     } catch {
-      this.micFailed = true; // blocked or no microphone: the ring still animates, just not from your voice
+      this.micFailed = true; // blocked or no microphone: the sphere still moves, just not from your voice
     } finally {
       this.micPending = false;
     }
@@ -80,9 +103,9 @@ export class Orb {
     this.mic = null;
   }
 
-  /** Where each bar should be right now, 0..1, from the voice, the state, or a gentle idle breath. */
+  /** How loud each band should be right now, 0..1: from the voice, from the state, or silence. Also sets levelTarget. */
   targets(t) {
-    const out = new Float32Array(BARS);
+    const out = new Float32Array(BANDS);
     const state = this.state;
     const m = this.mic;
     if (m && state !== 'speaking' && state !== 'thinking') {
@@ -91,26 +114,20 @@ export class Orb {
       let sum = 0;
       for (let i = 0; i < m.wave.length; i++) { const v = (m.wave[i] - 128) / 128; sum += v * v; }
       this.levelTarget = Math.min(1, Math.sqrt(sum / m.wave.length) * 7);
-      for (let i = 0; i < BARS; i++) {
-        const idx = i < HALF ? i : BARS - 1 - i;            // mirrored, so it looks balanced
-        const bin = 1 + Math.floor(Math.pow(idx / (HALF - 1), 1.35) * 42); // speech lives in the lowest ~45 bins
-        const v = Math.max(0, (m.freq[bin] / 255 - 0.12) / 0.88);
-        out[i] = Math.min(1, Math.pow(v, 1.15) * 1.25);
+      for (let b = 0; b < BANDS; b++) {
+        const bin = 1 + Math.floor(Math.pow(b / (BANDS - 1), 1.35) * 56);   // speech lives in the lowest ~60 bins
+        const v = Math.max(0, (m.freq[bin] / 255 - 0.1) / 0.9);
+        out[b] = Math.min(1, Math.pow(v, 1.1) * 1.3);
       }
     } else if (state === 'speaking') {
-      this.levelTarget = 0.55 + 0.25 * Math.sin(t * 7);
-      for (let i = 0; i < BARS; i++) {
-        const idx = i < HALF ? i : BARS - 1 - i;
-        out[i] = 0.22 + 0.5 * Math.abs(Math.sin(t * 5.5 + idx * 0.55) * Math.sin(t * 2.3 + idx * 0.17));
-      }
+      this.levelTarget = 0.5 + 0.25 * Math.sin(t * 7);
+      for (let b = 0; b < BANDS; b++) out[b] = 0.2 + 0.55 * Math.abs(Math.sin(t * 5.2 + b * 0.5) * Math.sin(t * 2.1 + b * 0.19));
     } else if (state === 'thinking') {
-      this.levelTarget = 0.25;
-      for (let i = 0; i < BARS; i++) out[i] = 0.12 + 0.1 * Math.sin(t * 6 - i * 0.35);
+      this.levelTarget = 0.22;
+      for (let b = 0; b < BANDS; b++) out[b] = 0.1 + 0.16 * (0.5 + 0.5 * Math.sin(t * 6 - b * 0.45));
     } else {
       this.levelTarget = 0;
     }
-    const breath = state === 'idle' ? 0.04 : 0.07;
-    for (let i = 0; i < BARS; i++) out[i] = Math.max(out[i], breath + 0.03 * Math.sin(t * 1.4 + i * 0.5));
     return out;
   }
 
@@ -126,13 +143,23 @@ export class Orb {
     const state = this.state;
 
     const target = this.targets(t);
-    for (let i = 0; i < BARS; i++) this.bars[i] += (target[i] - this.bars[i]) * (target[i] > this.bars[i] ? 0.55 : 0.14);
+    for (let b = 0; b < BANDS; b++) this.bands[b] += (target[b] - this.bands[b]) * (target[b] > this.bands[b] ? 0.6 : 0.12);
     this.level += ((this.levelTarget || 0) - this.level) * 0.25;
 
-    const spin = reduceMotion ? 0.05 : state === 'thinking' ? 3.4 : state === 'listening' ? 0.9 : 0.35;
-    this.spinA += spin * dt;
-    this.spinB -= spin * 0.55 * dt;
+    const spin = reduceMotion ? 0.04 : state === 'thinking' ? 1.7 : state === 'listening' ? 0.5 : state === 'idle' ? 0.12 : 0.28;
+    this.yaw += spin * dt;
     this.draw(t, state);
+  }
+
+  colours() {
+    const P = this.palette || (this.palette = orbPalette());
+    const quiet = P.bar0, loud = P.bar1, other = hexToRgb(P.ring[2]);
+    this.ramp = {
+      calm: Array.from({ length: STEPS }, (_, k) => `rgb(${mix(quiet, loud, k / (STEPS - 1)).join(',')})`),
+      busy: Array.from({ length: STEPS }, (_, k) => `rgb(${mix(mix(quiet, other, 0.6), loud, k / (STEPS - 1)).join(',')})`),
+      glow: P.glow,
+    };
+    return this.ramp;
   }
 
   draw(t, state) {
@@ -140,91 +167,59 @@ export class Orb {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, S, S);
     const c = S / 2;
-    const breathe = state === 'idle' ? 0.5 + 0.5 * Math.sin(t * 1.1) : 0.5 + 0.5 * Math.sin(t * (state === 'thinking' ? 4.5 : 2));
-    const lift = Math.min(1, this.level * 0.9 + (state === 'listening' ? 0.35 : 0) + (state === 'thinking' ? 0.2 * breathe : 0));
-    const R = S * 0.285 * (1 + this.level * 0.025);
+    const m = c - S * 0.07;                                                  // the sphere sits a little above the middle, clear of the label under it
+    const ramp = this.ramp || this.colours();
+    const colours = state === 'thinking' ? ramp.busy : ramp.calm;
 
-    // The colours come from the chosen look (theme.js); the modern one is calmer: one faint circle, thinner bars, a softer ring.
-    const P = this.palette || (this.palette = orbPalette());
-    const modern = P.modern;
+    const awake = state === 'idle' ? 0.5 : state === 'ready' ? 0.72 : 1;       // how bright the dots are
+    const breathe = 0.5 + 0.5 * Math.sin(t * (state === 'idle' ? 1.1 : state === 'thinking' ? 4.5 : 1.8));
+    const swell = 1 + this.level * 0.14 + (state === 'listening' ? 0.05 : 0) + 0.025 * breathe;
+    const R = S * 0.25 * swell;          // the loudest the dots can get still stays inside the canvas (about 0.41 of its width from the middle)
 
-    // The faint outer circle (and, in the classic look, the ring of dots on it).
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = `rgba(${P.halo}, ${modern ? 0.16 : 0.26})`;
-    ctx.beginPath(); ctx.arc(c, c, S * 0.468, 0, TAU); ctx.stroke();
-    if (!modern) {
-      ctx.fillStyle = `rgba(${P.dots}, 0.5)`;
-      for (let i = 0; i < 90; i++) {
-        const a = (i / 90) * TAU;
-        ctx.beginPath(); ctx.arc(c + Math.cos(a) * S * 0.452, c + Math.sin(a) * S * 0.452, S * 0.0035, 0, TAU); ctx.fill();
-      }
+    // A soft glow behind the dots that follows the volume.
+    const glow = ctx.createRadialGradient(c, m, 0, c, m, S * 0.5);
+    glow.addColorStop(0, `rgba(${ramp.glow}, ${0.07 + 0.2 * this.level + 0.05 * awake})`);
+    glow.addColorStop(1, `rgba(${ramp.glow}, 0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, S, S);
+
+    const tilt = 0.42 + 0.06 * Math.sin(t * 0.4);
+    const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), ct = Math.cos(tilt), st = Math.sin(tilt);
+    const dotR = S * 0.0062;
+    const paths = [[], []];                                                    // [back, front] x STEPS paths, filled once each
+    for (let p = 0; p < 2; p++) for (let k = 0; k < STEPS; k++) paths[p].push(new Path2D());
+
+    for (let i = 0; i < DOTS; i++) {
+      const x1 = X[i] * cy + Z[i] * sy, z1 = -X[i] * sy + Z[i] * cy;
+      const y2 = Y[i] * ct - z1 * st, z2 = Y[i] * st + z1 * ct;                // z2 > 0 is toward the viewer
+      let amp = this.bands[BAND[i]] * (0.65 + 0.35 * Math.sin(PHASE[i] + t * 2.4));
+      if (state === 'thinking') amp += 0.3 * (0.5 + 0.5 * Math.sin(t * 5.5 - Y[i] * 4.5 + PHASE[i] * 0.2));
+      else if (state === 'idle' || state === 'ready') amp += 0.06 * (0.5 + 0.5 * Math.sin(t * 0.9 + Y[i] * 3 + PHASE[i]));
+      amp = Math.min(1, amp);
+      const out = 1 + amp * 0.36;
+      const persp = 1 / (1 - z2 * 0.3);
+      const px = c + x1 * R * out * persp, py = m + y2 * R * out * persp;
+      const depth = (z2 + 1) / 2;                                              // 0 at the back, 1 at the front
+      const r = dotR * SIZE[i] * (0.6 + 0.6 * depth) * (1 + amp * 0.9);
+      const step = Math.min(STEPS - 1, Math.round((amp * 0.8 + depth * 0.3) * (STEPS - 1)));
+      const path = paths[z2 >= 0 ? 1 : 0][step];
+      path.moveTo(px + r, py);
+      path.arc(px, py, r, 0, TAU);
     }
+    for (let p = 0; p < 2; p++) {
+      ctx.globalAlpha = (p ? 0.95 : 0.4) * awake;
+      for (let k = 0; k < STEPS; k++) { ctx.fillStyle = colours[k]; ctx.fill(paths[p][k]); }
+    }
+    ctx.globalAlpha = 1;
 
-    // Speaking: ripples leave the ring.
+    // Speaking: a thin ripple leaves the sphere.
     if (state === 'speaking') {
       for (let k = 0; k < 2; k++) {
-        const p = (t * 0.8 + k * 0.5) % 1;
-        ctx.strokeStyle = `rgba(${P.ripple}, ${0.5 * (1 - p)})`;
-        ctx.lineWidth = S * 0.006;
-        ctx.beginPath(); ctx.arc(c, c, R + p * S * 0.16, 0, TAU); ctx.stroke();
+        const pr = (t * 0.7 + k * 0.5) % 1;
+        ctx.strokeStyle = `rgba(${ramp.glow}, ${0.35 * (1 - pr)})`;
+        ctx.lineWidth = S * 0.004;
+        ctx.beginPath(); ctx.arc(c, m, R * (1.15 + pr * 0.55), 0, TAU); ctx.stroke();
       }
     }
-
-    // The voice bars.
-    ctx.lineCap = 'round';
-    ctx.lineWidth = S * (modern ? 0.0075 : 0.0105);
-    const r0 = S * 0.345;
-    const [b0, b1] = [P.bar0, P.bar1];
-    for (let i = 0; i < BARS; i++) {
-      const v = this.bars[i];
-      const a = -Math.PI / 2 + (i / BARS) * TAU;
-      const len = S * (0.01 + v * 0.088);
-      ctx.strokeStyle = `rgba(${Math.round(b0[0] + (b1[0] - b0[0]) * v)}, ${Math.round(b0[1] + (b1[1] - b0[1]) * v)}, ${Math.round(b0[2] + (b1[2] - b0[2]) * v)}, ${(modern ? 0.28 : 0.35) + 0.65 * Math.min(1, v * 1.4)})`;
-      ctx.beginPath();
-      ctx.moveTo(c + Math.cos(a) * r0, c + Math.sin(a) * r0);
-      ctx.lineTo(c + Math.cos(a) * (r0 + len), c + Math.sin(a) * (r0 + len));
-      ctx.stroke();
-    }
-
-    // The two white arcs that circle the ring.
-    ctx.lineWidth = S * (modern ? 0.005 : 0.0075);
-    ctx.strokeStyle = `rgba(${modern ? P.inner : '255, 255, 255'}, ${modern ? 0.8 : 0.92})`;
-    ctx.beginPath(); ctx.arc(c, c, S * 0.322, this.spinA, this.spinA + 0.95); ctx.stroke();
-    ctx.strokeStyle = `rgba(${modern ? P.inner : '255, 255, 255'}, ${modern ? 0.4 : 0.55})`;
-    ctx.beginPath(); ctx.arc(c, c, S * 0.322, this.spinB, this.spinB + 0.34); ctx.stroke();
-
-    // The dark centre, then the glowing ring around it.
-    ctx.fillStyle = P.centre;
-    ctx.beginPath(); ctx.arc(c, c, R - S * 0.012, 0, TAU); ctx.fill();
-
-    const grad = ctx.createLinearGradient(c - R, c - R, c + R, c + R);
-    grad.addColorStop(0, P.ring[0]);
-    grad.addColorStop(0.5, P.ring[1]);
-    grad.addColorStop(1, P.ring[2]);
-    ctx.lineWidth = S * ((modern ? 0.03 : 0.046) + lift * 0.014);
-    ctx.strokeStyle = grad;
-    ctx.shadowColor = `rgba(${P.glow}, ${(modern ? 0.4 : 0.65) + 0.3 * lift})`;
-    ctx.shadowBlur = S * ((modern ? 0.09 : 0.07) + 0.07 * lift + 0.02 * breathe);
-    ctx.beginPath(); ctx.arc(c, c, R, 0, TAU); ctx.stroke();
-    ctx.shadowBlur = S * 0.025;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    if (!modern) {
-      ctx.lineWidth = Math.max(1, S * 0.006);
-      ctx.strokeStyle = `rgba(${P.inner}, 0.85)`;
-      ctx.beginPath(); ctx.arc(c, c, R - S * 0.032, 0, TAU); ctx.stroke();
-    }
-
-    // The name.
-    ctx.fillStyle = '#fff';
-    ctx.font = `${modern ? 200 : 300} ${S * (modern ? 0.082 : 0.092)}px ${modern ? '"Segoe UI Variable Display", ' : ''}"Segoe UI", "Helvetica Neue", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const gap = S * (modern ? 0.016 : 0.011);
-    if ('letterSpacing' in ctx) ctx.letterSpacing = `${gap}px`;
-    ctx.shadowColor = `rgba(${P.name}, ${modern ? 0.35 : 0.55})`;
-    ctx.shadowBlur = S * 0.03;
-    ctx.fillText('JARVIS', c + gap / 2, c + S * 0.004);
-    ctx.shadowBlur = 0;
   }
 }

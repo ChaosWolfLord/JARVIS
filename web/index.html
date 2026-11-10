@@ -7,6 +7,7 @@
   <script src="look.js"></script>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="modern.css">
+  <link rel="stylesheet" href="dock.css">
 </head>
 <body class="panel-hidden">
   <div id="app">
@@ -144,26 +145,38 @@
         </div>
       </div>
 
-      <nav id="toolbar" aria-label="Board tools">
-        <div class="dock-side">
-          <div class="dock-group">
-            <button data-tool="pen" class="active" title="Pen (P)">✎</button>
-            <button data-tool="eraser" title="Eraser (E)">⌫</button>
+      <nav id="toolbar" aria-label="JARVIS controls">
+        <div class="dock-side dock-left">
+          <div class="dock-group" role="group" aria-label="Draw">
+            <button data-tool="pen" class="dock-btn active" title="Pen (P): draw on the board" aria-label="Pen">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg><span>Pen</span>
+            </button>
+            <button data-tool="eraser" class="dock-btn" title="Eraser (E): rub out drawing" aria-label="Eraser">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15l8.5-8.5a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"/><path d="M13 19h7"/></svg><span>Eraser</span>
+            </button>
+            <button id="btn-ink" class="dock-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Pen colour and thickness">
+              <i class="ink-dot" aria-hidden="true"></i><span>Colour</span>
+            </button>
           </div>
-          <div class="dock-group">
-            <div id="swatches"></div>
-            <input id="size" type="range" min="2" max="14" value="4" title="Pen size">
-          </div>
-          <div class="dock-group">
-            <button id="btn-note" title="New sticky note (N)">▣</button>
-            <button id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
-            <button id="btn-redo" title="Redo (Ctrl+Y)">↷</button>
-            <button id="btn-clear" title="Clear ink">⌧</button>
+          <div class="dock-group" role="group" aria-label="Board">
+            <button id="btn-note" class="dock-btn" title="New sticky note (N)" aria-label="Sticky note">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5"/></svg><span>Note</span>
+            </button>
+            <button id="btn-undo" class="dock-btn" title="Undo (Ctrl+Z)" aria-label="Undo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg><span>Undo</span>
+            </button>
+            <button id="btn-redo" class="dock-btn" title="Redo (Ctrl+Y)" aria-label="Redo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg><span>Redo</span>
+            </button>
+            <button id="btn-clear" class="dock-btn" title="Clear all drawing (notes stay). Ctrl+Z brings it back." aria-label="Clear drawing">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg><span>Clear</span>
+            </button>
           </div>
         </div>
-        <button id="orb" type="button" data-state="idle" aria-label="JARVIS: tap to open the chat" title="JARVIS (tap to open the chat)">
+        <button id="orb" type="button" data-state="idle" aria-label="JARVIS: tap to turn the voice on or off" title="JARVIS: tap to turn the voice on or off (M). While it is talking, tap to stop it.">
           <canvas id="orb-canvas" aria-hidden="true"></canvas>
         </button>
+        <span id="orb-label" aria-live="polite">Voice off · tap to talk</span>
         <div id="orb-bubble" hidden></div>
         <div id="status-menu" hidden>
           <h3>Status</h3>
@@ -233,26 +246,55 @@
           <p class="wm-hint">Drag a card by its title to move it, and its corner to resize it.</p>
           <button type="button" id="widget-reset">Reset layout</button>
         </div>
-        <div class="dock-side"><div class="dock-group">
-          <button id="btn-mic" title="Voice: say “Jarvis, …” (M)" aria-label="Voice">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        <div id="ink-menu" class="dock-menu" hidden>
+          <h3>Pen</h3>
+          <div id="swatches" role="group" aria-label="Pen colour"></div>
+          <label class="ink-size"><span>Thickness</span><input id="size" type="range" min="2" max="14" value="4" title="Pen thickness"></label>
+        </div>
+        <div id="more-menu" class="dock-menu" hidden>
+          <h3>More</h3>
+          <button type="button" class="menu-row" id="btn-memory">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6c0 2 1 3 2 4v3h8v-3c1-1 2-2 2-4a6 6 0 0 0-6-6z"/><path d="M9 19h6M10 22h4"/></svg>
+            <span><b>Memory</b><small>What JARVIS remembers about you. Add or remove facts.</small></span>
           </button>
-          <button id="btn-memory" title="What JARVIS knows about you">☰</button>
-          <button id="btn-kb" title="On-screen keyboard (B)" aria-label="Keyboard">⌨</button>
-          <button id="btn-touch" title="Big controls for the wall: touch mode (T)" aria-label="Touch mode">☝</button>
-          <button id="btn-pen" title="Pen tracker: calibrate (K)" aria-label="Pen tracker">◎</button>
-          <button id="btn-fit" title="Fit to wall: test pattern and corner adjustment (J)">▦</button>
-          <button id="btn-lights" class="active" title="Side lights (L): a faint glow from both sides of the screen that slowly cycles through the colours">✦</button>
-          <button id="btn-full" title="Fullscreen (F)">⛶</button>
-          <button id="btn-status" data-level="warn" title="Status and board backups" aria-label="Status">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
-            <i class="status-dot"></i>
+          <button type="button" class="menu-row" id="btn-kb" title="On-screen keyboard (B)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+            <span><b>Keyboard</b><small>An on-screen keyboard, for typing at the wall (B)</small></span>
           </button>
-          <button id="btn-widgets" title="Widgets: add or remove (W)" aria-label="Widgets">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><path d="M17.25 13.5v7.5M13.5 17.25H21"/></svg>
+          <button type="button" class="menu-row" id="btn-touch" title="Touch mode (T)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10m0-.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a5 5 0 0 1-4-2l-3-4.2a1.5 1.5 0 0 1 2.4-1.8L9 14"/></svg>
+            <span><b>Touch mode</b><small>Bigger buttons, for the pen or a finger from across the room (T)</small></span><em class="state">On</em>
           </button>
-          <button id="btn-panel" title="Open or close the chat (Tab)" aria-label="Chat">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-8l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 10h8M8 13h5"/></svg>
+          <button type="button" class="menu-row" id="btn-pen" title="Pen tracker: calibrate (K)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+            <span><b>Pen tracker</b><small>Set up or recalibrate the pen that works on the wall (K)</small></span><em class="state">Running</em>
+          </button>
+          <button type="button" class="menu-row" id="btn-fit" title="Fit to wall (J)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            <span><b>Fit to wall</b><small>Match the picture to the projected screen: test pattern and corners (J)</small></span>
+          </button>
+          <button type="button" class="menu-row active" id="btn-lights" title="Side lights (L)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>
+            <span><b>Side lights</b><small>A faint colour glow along both sides that slowly changes (L)</small></span><em class="state">On</em>
+          </button>
+          <button type="button" class="menu-row" id="btn-full" title="Fullscreen (F)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            <span><b>Fullscreen</b><small>Fill the whole screen (F)</small></span>
+          </button>
+        </div>
+        <button id="btn-mic" class="mic-hidden" type="button" title="Voice: say “Jarvis, …” (M)" aria-label="Voice" tabindex="-1"></button>
+        <div class="dock-side dock-right"><div class="dock-group" role="group" aria-label="JARVIS">
+          <button id="btn-panel" class="dock-btn" title="Open or close the chat, to type to JARVIS (Tab)" aria-label="Chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-8l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 10h8M8 13h5"/></svg><span>Chat</span>
+          </button>
+          <button id="btn-widgets" class="dock-btn" title="Cards on the board: weather, timers, usage and more (W)" aria-label="Cards">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><path d="M17.25 13.5v7.5M13.5 17.25H21"/></svg><span>Cards</span>
+          </button>
+          <button id="btn-status" class="dock-btn" data-level="warn" title="Is everything working? Status, privacy, phone, voice and backups" aria-label="Status">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg><i class="status-dot"></i><span>Status</span>
+          </button>
+          <button id="btn-more" class="dock-btn" type="button" aria-haspopup="true" aria-expanded="false" title="More: memory, keyboard, touch mode, pen tracker, fit to wall, side lights, fullscreen">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg><span>More</span>
           </button>
         </div></div>
       </nav>

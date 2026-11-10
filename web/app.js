@@ -5,6 +5,7 @@ import { Fit } from './fit.js';
 import { PenInput } from './pen.js';
 import { Keyboard } from './keyboard.js';
 import { Orb } from './orb.js';
+import { dockMenus } from './dockmenus.js';
 import { Usage } from './usage.js';
 import { Widgets } from './widgets.js';
 import { Weather } from './weather.js';
@@ -49,6 +50,8 @@ const board = new Board({
   stage: $('stage'), boardEl: $('board'), canvas: $('ink'), notesEl: $('notes'), dockEl: $('toolbar'),
 });
 
+function showInkColour() { $('btn-ink').style.setProperty('--ink', COLORS[board.color]); }
+
 function setTool(tool) {
   board.tool = tool;
   document.querySelectorAll('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
@@ -63,6 +66,7 @@ for (const name of ['cyan', 'white', 'amber', 'green', 'red']) {
   sw.title = name;
   sw.addEventListener('click', () => {
     board.color = name;
+    showInkColour();
     setTool('pen');
     document.querySelectorAll('.swatch').forEach((s) => s.classList.toggle('active', s === sw));
   });
@@ -73,6 +77,7 @@ for (const name of ['cyan', 'white', 'amber', 'green', 'red']) {
 function refreshLook() {
   Object.assign(COLORS, inkPalette());
   document.querySelectorAll('.swatch').forEach((s) => s.style.setProperty('--sw', COLORS[s.title]));
+  showInkColour();
   board.redraw();
 }
 window.addEventListener('jarvis-look', refreshLook);
@@ -135,8 +140,8 @@ function setPanel(open, remember = true) {
 const togglePanel = () => setPanel(document.body.classList.contains('panel-hidden'));
 try { setPanel(localStorage.getItem('jarvis.panel') === '1', false); } catch { setPanel(false, false); }
 $('btn-panel').addEventListener('click', togglePanel);
-// Tapping the orb while JARVIS is talking or working stops it; otherwise it opens or closes the chat.
-$('orb').addEventListener('click', () => { if (voice.speaking || chat.busy) voice.interrupt(); else togglePanel(); });
+// Tapping the orb while JARVIS is talking or working stops it; otherwise it turns the voice on or off (the Chat button opens the chat).
+$('orb').addEventListener('click', () => { if (voice.speaking || chat.busy) voice.interrupt(); else voice.toggle(); });
 // ---- chat ------------------------------------------------------------------
 const chat = new Chat(
   { log: $('log'), form: $('composer'), input: $('input'), includeBoard: $('include-board'), spendEl: $('spend') },
@@ -156,6 +161,7 @@ const bigOrbEl = $('orb-big');
 const bigOrb = new Orb({ canvas: $('orb-big-canvas'), button: bigOrbEl, follow: orb });   // the calm-mode orb: same states, same microphone
 window.jarvis.orb = orb;
 window.jarvis.bigOrb = bigOrb;
+const orbLabel = $('orb-label');
 const bubble = $('orb-bubble');
 let bubbleTimer;
 setInterval(() => {
@@ -164,6 +170,10 @@ setInterval(() => {
       : voice.enabled && Date.now() < voice.awaitUntil ? 'listening'
         : voice.enabled ? 'ready' : 'idle';
   if (orbButton.dataset.state !== state) { orbButton.dataset.state = state; bigOrbEl.dataset.state = state; }
+  const label = voice.supported === false ? 'Voice needs Chrome or Edge' : {
+    idle: 'Voice off · tap to talk', ready: 'Say “Jarvis” · tap to mute', listening: 'Listening…', thinking: 'Thinking · tap to stop', speaking: 'Speaking · tap to stop',
+  }[state];
+  if (orbLabel.textContent !== label) orbLabel.textContent = label;
   // The visualizer listens to the microphone only while voice is on.
   if (voice.enabled) orb.startMic(); else orb.stopMic();
 }, 150);
@@ -248,6 +258,7 @@ widgets.register({ id: 'music', title: 'Music', icon: '🎵', blurb: 'Play YouTu
 widgets.restore();
 Object.assign(window.jarvis, { usage, weather, timers, widgets, system, lights: lightsUI, music: musicUI, sounds, holo, showoff });
 const status = new Status({ button: $('btn-status'), menu: $('status-menu'), banner: $('offline-banner'), board, voice, pen, toast });
+dockMenus([{ button: $('btn-ink'), menu: $('ink-menu') }, { button: $('btn-more'), menu: $('more-menu'), closeOnChoice: true }]);
 $('export-png').addEventListener('click', () => status.exportPng());
 $('export-json').addEventListener('click', () => status.exportJson());
 $('show-backups').addEventListener('click', () => status.showBackups());

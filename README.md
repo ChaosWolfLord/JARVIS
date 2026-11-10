@@ -8,6 +8,16 @@ Projected AI whiteboard. See [PLAN.md](PLAN.md) for the full build plan. This is
 2. Copy `.env.example` to `%LOCALAPPDATA%\jarvis\.env` (type that into the File Explorer address bar; it's outside OneDrive) and paste the key after `GEMINI_API_KEY=`. A `.env` in the project folder still works.
 3. Double-click **`JARVIS.bat`**. It creates a Python environment in `%LOCALAPPDATA%\jarvis\venv` (outside OneDrive), installs the requirements, starts the server, and opens the board in its own full-screen window. See "Keeping JARVIS running" below. (`run.bat` still works: it runs the server in a visible window and opens your normal browser.)
 
+## The bottom bar
+
+One slim bar, every button named under its icon, in three parts:
+
+- **Left, Draw and Board:** Pen, Eraser, Colour (opens the colours and the thickness) · Note, Undo, Redo, Clear.
+- **Middle, the orb:** a small 3D sphere of dots that turns slowly and moves with what the microphone hears (low notes around the middle, high ones toward the top and bottom; it swells with the volume). Tap it to turn the voice on or off, or to stop JARVIS while it is thinking or talking; the line under it says what it is doing ("Voice off · tap to talk", "Say “Jarvis” · tap to mute", "Listening…", "Thinking", "Speaking"). Only the sphere itself is the button, so the pen can draw around it. The microphone is analysed in the page to move the dots; nothing is recorded or sent. In calm mode the same sphere is shown large.
+- **Right, JARVIS:** Chat (type to JARVIS), Cards (weather, timers, usage and the other widgets), Status (the health light; privacy, phone, voice and backups), and **More**, which holds the buttons used now and then, each with a line saying what it does: Memory, Keyboard, Touch mode, Pen tracker, Fit to wall, Side lights and Fullscreen. The keyboard shortcuts are unchanged (P, E, N, M, B, T, K, J, L, F, W, Tab).
+
+Touch mode makes the whole bar and the orb bigger. It follows the Modern or Classic look.
+
 ## Showing JARVIS to people
 
 Run **`tools\demo_check.bat`** a few minutes before. It checks, in plain words, the things that went wrong in the first demo: the Wi-Fi the PC is on (the lights and speakers only work on their own network), how much of each AI model's free allowance is left and how fast it answers right now, the lights, the speakers, the wake word and the phone door. It plays no music and changes no light, and uses one small AI request.
