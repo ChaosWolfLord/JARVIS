@@ -4,17 +4,16 @@
    It uses the colour variables of whichever look is on. Loaded after dock.css. */
 
 #status-menu.status-drawer, html.modern #status-menu.status-drawer {
-  position: absolute; left: 12px; right: auto; top: 12px; bottom: 126px; margin: 0; z-index: 25;
-  width: clamp(300px, 27vw, 400px); max-width: calc(100vw - 24px); max-height: none; padding: 0; overflow: hidden;
+  position: static; flex: none; width: var(--status-w); height: auto; min-height: 0; margin: 0; padding: 0; overflow: hidden;
   display: flex; flex-direction: column;
-  background: rgba(2, 14, 20, 0.97); border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 0 30px rgba(var(--accent-rgb), 0.2);
+  background: linear-gradient(180deg, rgba(0, 20, 28, 0.96), rgba(0, 6, 10, 0.98)); border: 0; border-right: 1px solid var(--line); border-radius: 0; box-shadow: none;
 }
 html.modern #status-menu.status-drawer {
-  background: var(--surface); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); box-shadow: var(--shadow);
+  background: linear-gradient(180deg, rgba(20, 25, 38, 0.9), rgba(12, 15, 24, 0.95)); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
 }
-#status-menu.status-drawer[hidden] { display: none; }
-body.touch #status-menu.status-drawer { bottom: 148px; width: clamp(400px, 34vw, 540px); }
-body.ambient #status-menu.status-drawer { opacity: 0; pointer-events: none; }
+/* the modern rule above sets display, which beat the [hidden] one and made the panel impossible to close: this one has to be as specific */
+#status-menu.status-drawer[hidden], html.modern #status-menu.status-drawer[hidden] { display: none; }
+body.ambient #status-menu.status-drawer { display: none; }
 
 /* ---- the answer at the top ---- */
 .sd-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 14px 14px 18px; border-bottom: 1px solid var(--line); }

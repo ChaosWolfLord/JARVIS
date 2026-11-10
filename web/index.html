@@ -12,6 +12,119 @@
 </head>
 <body class="panel-hidden">
   <div id="app">
+    <aside id="status-menu" class="status-drawer" hidden aria-label="Status">
+      <header class="sd-head">
+        <div id="sd-summary" data-level="warn">
+          <i class="sd-light" aria-hidden="true"></i>
+          <div><b id="sd-headline">Checking…</b><small id="sd-sub"></small></div>
+        </div>
+        <button type="button" id="status-close" class="sd-close" title="Close (S)" aria-label="Close status">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <div class="sd-body">
+        <div class="sd-quick" role="group" aria-label="Quick actions">
+          <button type="button" data-do="lock" title="Hide everything until it is unlocked (H)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Lock screen</span>
+          </button>
+          <button type="button" data-do="pair" title="Show a code to connect your phone">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><span>Pair phone</span>
+          </button>
+          <button type="button" data-do="picture" title="Save the board as a picture">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3"/></svg><span>Save picture</span>
+          </button>
+        </div>
+        <ul id="status-rows" aria-live="polite"></ul>
+
+        <details class="sd-sec" id="sec-phone">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><span><b>Phone</b><small>Use JARVIS from your phone, on your Wi-Fi</small></span></summary>
+          <div class="sd-inner">
+            <p id="phone-info" class="wm-hint">Checking…</p>
+            <div id="phone-pair" hidden>
+              <img id="phone-qr" alt="QR code for the phone page" width="150" height="150">
+              <div><small>Pairing code (works once, for ten minutes)</small><b id="phone-code"></b></div>
+            </div>
+            <div class="status-actions">
+              <button type="button" id="phone-show">Show pairing code</button>
+              <button type="button" id="phone-forget">Forget phones</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="sd-sec" id="sec-privacy">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span><b>Privacy</b><small>Hide the screen, set an unlock code</small></span></summary>
+          <div class="sd-inner">
+            <div class="status-actions">
+              <button type="button" id="privacy-lock">Lock the screen now</button>
+              <button type="button" id="privacy-setcode">Unlock code…</button>
+            </div>
+            <form id="privacy-form" hidden>
+              <input id="privacy-current" type="password" inputmode="numeric" maxlength="8" placeholder="current code" autocomplete="off">
+              <input id="privacy-new" type="password" inputmode="numeric" maxlength="8" placeholder="new code (4 to 8 digits)" autocomplete="off">
+              <button type="submit">Save</button>
+              <button type="button" id="privacy-remove" title="Remove the code: the screen then unlocks with a touch">No code</button>
+              <p id="privacy-note" class="wm-hint"></p>
+            </form>
+            <p class="wm-hint">Say “Jarvis, privacy” (or press H) to hide everything; “Jarvis, privacy unlock” and the digits, or the keypad, brings it back. While it is on, JARVIS answers nothing.</p>
+          </div>
+        </details>
+
+        <details class="sd-sec" id="sec-voice">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span><b>Voice</b><small>Pick how JARVIS sounds</small></span></summary>
+          <div class="sd-inner">
+            <label class="status-field">JARVIS speaks with <select id="voice-pick" title="Voices installed in this browser; names with Natural sound best in Edge"></select></label>
+            <div class="status-field">
+              Speed <input id="voice-rate" type="range" min="0.7" max="1.4" step="0.05">
+              Pitch <input id="voice-pitch" type="range" min="0.6" max="1.4" step="0.05">
+              <button type="button" id="voice-test">Test</button>
+            </div>
+            <p id="voice-note" class="wm-hint"></p>
+          </div>
+        </details>
+
+        <details class="sd-sec" id="sec-display">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/></svg><span><b>Display</b><small>Look, calm mode and sounds</small></span></summary>
+          <div class="sd-inner">
+            <label class="status-field">Look
+              <select id="opt-look" title="Modern is the calm glass look; Classic is the original neon-on-black one">
+                <option value="modern">Modern</option><option value="classic">Classic</option>
+              </select>
+            </label>
+            <label class="status-field">Calm the wall after
+              <select id="ambient-minutes" title="Fades the dock and dims the board when nobody has used JARVIS for a while (press A to try it)">
+                <option value="0">never</option><option value="1">1 minute</option><option value="2">2 minutes</option>
+                <option value="5">5 minutes</option><option value="10">10 minutes</option>
+              </select> of quiet
+            </label>
+            <label class="status-field"><input type="checkbox" id="opt-sounds"> Interface sounds</label>
+            <label class="status-field"><input type="checkbox" id="opt-boot"> Start-up sequence when JARVIS starts</label>
+            <div class="status-actions"><button type="button" id="boot-replay">Play start-up sequence</button></div>
+          </div>
+        </details>
+
+        <details class="sd-sec" id="sec-board">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 15l3-4 3 3 4-6"/></svg><span><b>Board and backups</b><small>Save, restore, and see what JARVIS did</small></span></summary>
+          <div class="sd-inner">
+            <div class="status-actions">
+              <button type="button" id="export-png">Save as picture</button>
+              <button type="button" id="export-json">Save data file</button>
+              <button type="button" id="show-backups">Backups…</button>
+              <button type="button" id="show-activity">Activity log…</button>
+            </div>
+            <div id="status-backups" hidden></div>
+            <p class="wm-hint">The board is saved on this PC automatically.</p>
+          </div>
+        </details>
+
+        <details class="sd-sec" id="sec-tools">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v3"/></svg><span><b>Connected tools</b><small>Apps JARVIS can use (MCP)</small></span></summary>
+          <div class="sd-inner">
+            <div id="mcp-rows"></div>
+            <div class="status-actions"><button type="button" id="mcp-reload">Reload connections</button></div>
+          </div>
+        </details>
+      </div>
+    </aside>
     <main id="stage">
       <div id="sidelight" aria-hidden="true"><i class="l"></i><i class="r"></i></div>
       <div id="board">
@@ -146,120 +259,6 @@
         </div>
       </div>
 
-      <aside id="status-menu" class="status-drawer" hidden aria-label="Status">
-        <header class="sd-head">
-          <div id="sd-summary" data-level="warn">
-            <i class="sd-light" aria-hidden="true"></i>
-            <div><b id="sd-headline">Checking…</b><small id="sd-sub"></small></div>
-          </div>
-          <button type="button" id="status-close" class="sd-close" title="Close (S)" aria-label="Close status">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-          </button>
-        </header>
-        <div class="sd-body">
-          <div class="sd-quick" role="group" aria-label="Quick actions">
-            <button type="button" data-do="lock" title="Hide everything until it is unlocked (H)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Lock screen</span>
-            </button>
-            <button type="button" data-do="pair" title="Show a code to connect your phone">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><span>Pair phone</span>
-            </button>
-            <button type="button" data-do="picture" title="Save the board as a picture">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3"/></svg><span>Save picture</span>
-            </button>
-          </div>
-          <ul id="status-rows" aria-live="polite"></ul>
-
-          <details class="sd-sec" id="sec-phone">
-            <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><span><b>Phone</b><small>Use JARVIS from your phone, on your Wi-Fi</small></span></summary>
-            <div class="sd-inner">
-              <p id="phone-info" class="wm-hint">Checking…</p>
-              <div id="phone-pair" hidden>
-                <img id="phone-qr" alt="QR code for the phone page" width="150" height="150">
-                <div><small>Pairing code (works once, for ten minutes)</small><b id="phone-code"></b></div>
-              </div>
-              <div class="status-actions">
-                <button type="button" id="phone-show">Show pairing code</button>
-                <button type="button" id="phone-forget">Forget phones</button>
-              </div>
-            </div>
-          </details>
-
-          <details class="sd-sec" id="sec-privacy">
-            <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span><b>Privacy</b><small>Hide the screen, set an unlock code</small></span></summary>
-            <div class="sd-inner">
-              <div class="status-actions">
-                <button type="button" id="privacy-lock">Lock the screen now</button>
-                <button type="button" id="privacy-setcode">Unlock code…</button>
-              </div>
-              <form id="privacy-form" hidden>
-                <input id="privacy-current" type="password" inputmode="numeric" maxlength="8" placeholder="current code" autocomplete="off">
-                <input id="privacy-new" type="password" inputmode="numeric" maxlength="8" placeholder="new code (4 to 8 digits)" autocomplete="off">
-                <button type="submit">Save</button>
-                <button type="button" id="privacy-remove" title="Remove the code: the screen then unlocks with a touch">No code</button>
-                <p id="privacy-note" class="wm-hint"></p>
-              </form>
-              <p class="wm-hint">Say “Jarvis, privacy” (or press H) to hide everything; “Jarvis, privacy unlock” and the digits, or the keypad, brings it back. While it is on, JARVIS answers nothing.</p>
-            </div>
-          </details>
-
-          <details class="sd-sec" id="sec-voice">
-            <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span><b>Voice</b><small>Pick how JARVIS sounds</small></span></summary>
-            <div class="sd-inner">
-              <label class="status-field">JARVIS speaks with <select id="voice-pick" title="Voices installed in this browser; names with Natural sound best in Edge"></select></label>
-              <div class="status-field">
-                Speed <input id="voice-rate" type="range" min="0.7" max="1.4" step="0.05">
-                Pitch <input id="voice-pitch" type="range" min="0.6" max="1.4" step="0.05">
-                <button type="button" id="voice-test">Test</button>
-              </div>
-              <p id="voice-note" class="wm-hint"></p>
-            </div>
-          </details>
-
-          <details class="sd-sec" id="sec-display">
-            <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/></svg><span><b>Display</b><small>Look, calm mode and sounds</small></span></summary>
-            <div class="sd-inner">
-              <label class="status-field">Look
-                <select id="opt-look" title="Modern is the calm glass look; Classic is the original neon-on-black one">
-                  <option value="modern">Modern</option><option value="classic">Classic</option>
-                </select>
-              </label>
-              <label class="status-field">Calm the wall after
-                <select id="ambient-minutes" title="Fades the dock and dims the board when nobody has used JARVIS for a while (press A to try it)">
-                  <option value="0">never</option><option value="1">1 minute</option><option value="2">2 minutes</option>
-                  <option value="5">5 minutes</option><option value="10">10 minutes</option>
-                </select> of quiet
-              </label>
-              <label class="status-field"><input type="checkbox" id="opt-sounds"> Interface sounds</label>
-              <label class="status-field"><input type="checkbox" id="opt-boot"> Start-up sequence when JARVIS starts</label>
-              <div class="status-actions"><button type="button" id="boot-replay">Play start-up sequence</button></div>
-            </div>
-          </details>
-
-          <details class="sd-sec" id="sec-board">
-            <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 15l3-4 3 3 4-6"/></svg><span><b>Board and backups</b><small>Save, restore, and see what JARVIS did</small></span></summary>
-            <div class="sd-inner">
-              <div class="status-actions">
-                <button type="button" id="export-png">Save as picture</button>
-                <button type="button" id="export-json">Save data file</button>
-                <button type="button" id="show-backups">Backups…</button>
-                <button type="button" id="show-activity">Activity log…</button>
-              </div>
-              <div id="status-backups" hidden></div>
-              <p class="wm-hint">The board is saved on this PC automatically.</p>
-            </div>
-          </details>
-
-          <details class="sd-sec" id="sec-tools">
-            <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v3"/></svg><span><b>Connected tools</b><small>Apps JARVIS can use (MCP)</small></span></summary>
-            <div class="sd-inner">
-              <div id="mcp-rows"></div>
-              <div class="status-actions"><button type="button" id="mcp-reload">Reload connections</button></div>
-            </div>
-          </details>
-        </div>
-      </aside>
-
       <nav id="toolbar" aria-label="JARVIS controls">
         <div class="dock-side dock-left">
           <div class="dock-group" role="group" aria-label="Status">
@@ -267,36 +266,25 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg><i class="status-dot"></i><span>Status</span>
           </button>
           </div>
-          <div class="dock-group" role="group" aria-label="Draw">
-            <button data-tool="pen" class="dock-btn active" title="Pen (P): draw on the board" aria-label="Pen">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg><span>Pen</span>
-            </button>
-            <button data-tool="eraser" class="dock-btn" title="Eraser (E): rub out drawing" aria-label="Eraser">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15l8.5-8.5a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"/><path d="M13 19h7"/></svg><span>Eraser</span>
-            </button>
-            <button id="btn-ink" class="dock-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Pen colour and thickness">
-              <i class="ink-dot" aria-hidden="true"></i><span>Colour</span>
-            </button>
-          </div>
-          <div class="dock-group" role="group" aria-label="Board">
-            <button id="btn-note" class="dock-btn" title="New sticky note (N)" aria-label="Sticky note">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5"/></svg><span>Note</span>
-            </button>
-            <button id="btn-undo" class="dock-btn" title="Undo (Ctrl+Z)" aria-label="Undo">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg><span>Undo</span>
-            </button>
-            <button id="btn-redo" class="dock-btn" title="Redo (Ctrl+Y)" aria-label="Redo">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg><span>Redo</span>
-            </button>
-            <button id="btn-clear" class="dock-btn" title="Clear all drawing (notes stay). Ctrl+Z brings it back." aria-label="Clear drawing">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg><span>Clear</span>
-            </button>
+          <div class="dock-group" role="group" aria-label="JARVIS">
+          <button id="btn-panel" class="dock-btn" title="Open or close the chat, to type to JARVIS (Tab)" aria-label="Chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-8l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 10h8M8 13h5"/></svg><span>Chat</span>
+          </button>
+          <button id="btn-note" class="dock-btn" title="New sticky note (N)" aria-label="Sticky note">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5"/></svg><span>Note</span>
+          </button>
+          <button id="btn-widgets" class="dock-btn" title="Cards on the board: weather, timers, usage and more (W)" aria-label="Cards">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><path d="M17.25 13.5v7.5M13.5 17.25H21"/></svg><span>Cards</span>
+          </button>
+          <button id="btn-more" class="dock-btn" type="button" aria-haspopup="true" aria-expanded="false" title="More: memory, keyboard, touch mode, pen tracker, fit to wall, side lights, fullscreen">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg><span>More</span>
+          </button>
           </div>
         </div>
         <button id="orb" type="button" data-state="idle" aria-label="JARVIS: tap to turn the voice on or off" title="JARVIS: tap to turn the voice on or off (M). While it is talking, tap to stop it.">
           <canvas id="orb-canvas" aria-hidden="true"></canvas>
+          <span id="orb-label" aria-live="polite">Voice off · tap to talk</span>
         </button>
-        <span id="orb-label" aria-live="polite">Voice off · tap to talk</span>
         <div id="orb-bubble" hidden></div>
         <div id="widget-menu" hidden>
           <h3>Widgets</h3>
@@ -341,17 +329,30 @@
           </button>
         </div>
         <button id="btn-mic" class="mic-hidden" type="button" title="Voice: say “Jarvis, …” (M)" aria-label="Voice" tabindex="-1"></button>
-        <div class="dock-side dock-right"><div class="dock-group" role="group" aria-label="JARVIS">
-          <button id="btn-panel" class="dock-btn" title="Open or close the chat, to type to JARVIS (Tab)" aria-label="Chat">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-8l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 10h8M8 13h5"/></svg><span>Chat</span>
-          </button>
-          <button id="btn-widgets" class="dock-btn" title="Cards on the board: weather, timers, usage and more (W)" aria-label="Cards">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><path d="M17.25 13.5v7.5M13.5 17.25H21"/></svg><span>Cards</span>
-          </button>
-          <button id="btn-more" class="dock-btn" type="button" aria-haspopup="true" aria-expanded="false" title="More: memory, keyboard, touch mode, pen tracker, fit to wall, side lights, fullscreen">
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg><span>More</span>
-          </button>
-        </div></div>
+        <div class="dock-side dock-right">
+          <div class="dock-group" role="group" aria-label="Draw">
+            <button data-tool="pen" class="dock-btn active" title="Pen (P): draw on the board" aria-label="Pen">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg><span>Pen</span>
+            </button>
+            <button data-tool="eraser" class="dock-btn" title="Eraser (E): rub out drawing" aria-label="Eraser">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15l8.5-8.5a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"/><path d="M13 19h7"/></svg><span>Eraser</span>
+            </button>
+            <button id="btn-ink" class="dock-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Pen colour and thickness">
+              <i class="ink-dot" aria-hidden="true"></i><span>Colour</span>
+            </button>
+          </div>
+          <div class="dock-group" role="group" aria-label="Undo and clear">
+            <button id="btn-undo" class="dock-btn" title="Undo (Ctrl+Z)" aria-label="Undo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg><span>Undo</span>
+            </button>
+            <button id="btn-redo" class="dock-btn" title="Redo (Ctrl+Y)" aria-label="Redo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg><span>Redo</span>
+            </button>
+            <button id="btn-clear" class="dock-btn" title="Clear all drawing (notes stay). Ctrl+Z brings it back." aria-label="Clear drawing">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg><span>Clear</span>
+            </button>
+          </div>
+        </div>
       </nav>
       <div id="ambient" aria-hidden="true">
         <div id="ambient-clock"><span id="ambient-time">--:--</span><span id="ambient-date"></span></div>

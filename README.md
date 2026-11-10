@@ -12,15 +12,15 @@ Projected AI whiteboard. See [PLAN.md](PLAN.md) for the full build plan. This is
 
 One slim bar, every button named under its icon, in three parts:
 
-- **Left, Status, Draw and Board:** Status (opens the status panel, see below) · Pen, Eraser, Colour (opens the colours and the thickness) · Note, Undo, Redo, Clear.
+- **Left, the app:** Status (opens the status panel, see below) · Chat (type to JARVIS) · Note (a sticky note) · Cards (weather, timers, usage and the other widgets) · **More**, which holds the buttons used now and then, each with a line saying what it does: Memory, Keyboard, Touch mode, Pen tracker, Fit to wall, Side lights and Fullscreen. The keyboard shortcuts are unchanged (P, E, N, M, B, T, K, J, L, F, W, S, Tab).
 - **Middle, the orb:** a small 3D sphere of dots that turns slowly and moves with what the microphone hears (low notes around the middle, high ones toward the top and bottom; it swells with the volume). Tap it to turn the voice on or off, or to stop JARVIS while it is thinking or talking; the line under it says what it is doing ("Voice off · tap to talk", "Say “Jarvis” · tap to mute", "Listening…", "Thinking", "Speaking"). Only the sphere itself is the button, so the pen can draw around it. The microphone is analysed in the page to move the dots; nothing is recorded or sent. In calm mode the same sphere is shown large.
-- **Right, JARVIS:** Chat (type to JARVIS), Cards (weather, timers, usage and the other widgets), and **More**, which holds the buttons used now and then, each with a line saying what it does: Memory, Keyboard, Touch mode, Pen tracker, Fit to wall, Side lights and Fullscreen. The keyboard shortcuts are unchanged (P, E, N, M, B, T, K, J, L, F, W, Tab).
+- **Right, drawing:** Pen, Eraser, Colour (opens the colours and the thickness) · Undo, Redo, Clear.
 
-Touch mode makes the whole bar and the orb bigger. It follows the Modern or Classic look.
+Touch mode makes the whole bar and the orb bigger. The orb is a cell in the middle of the bar and never paints outside it, so it can't cover a button; when the chat and the status panel are both open the bar shrinks its buttons (and, only then, hides their names) to stay in the room left. It follows the Modern or Classic look.
 
 ## The status panel
 
-The **Status** button (bottom left, with a green, amber or red light) or **S** opens a panel on the left of the board. It is a panel like the chat, not a pop-up: it stays open while you draw or talk, can be open at the same time as the chat, and closes with its button, its ×, S or Esc.
+The **Status** button (bottom left, with a green, amber or red light) or **S** opens a panel flush with the left edge of the window, the same kind of panel as the chat on the right: the board makes room for it, it stays open while you draw or talk, can be open at the same time as the chat, and closes with its button, its ×, S or Esc.
 
 - **The answer first.** The top says "Everything is working" (with the model and how many requests you have used today), or "3 things to look at" and which, or "JARVIS isn't running".
 - **Three quick actions:** Lock screen, Pair phone (shows the pairing code and QR code), Save picture.

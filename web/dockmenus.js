@@ -30,7 +30,7 @@ export function dockMenus(pairs) {
 
 /** Tells the bar how much room it has (the chat panel beside the board narrows it), so it can shrink its buttons before they collide with the orb. */
 export function watchDockSize(bar) {
-  const set = (w) => { bar.dataset.size = w < 790 ? 'tight' : w < 1010 ? 'compact' : 'roomy'; };
+  const set = (w) => { bar.dataset.size = w < 640 ? 'micro' : w < 790 ? 'tight' : w < 1010 ? 'compact' : 'roomy'; };
   set(bar.clientWidth);
   new ResizeObserver(([e]) => set(e.contentRect.width + 28)).observe(bar);
 }

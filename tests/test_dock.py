@@ -74,10 +74,15 @@ class Clarity(unittest.TestCase):
             self.assertTrue(label, f"{b['attrs'].get('id') or b['attrs'].get('data-tool')} has no label")
             self.assertTrue(b["attrs"].get("title"), f"{label} has no tooltip")
 
-    def test_the_bar_is_not_crowded(self):
+    def test_the_bar_is_not_crowded_and_each_side_has_its_own_job(self):
         self.assertLessEqual(len(labelled), 11, "the bar shows too many buttons: move rarely used ones into More")
-        right = re.search(r'<div class="dock-side dock-right">(.*?)</div></div>', INDEX, re.S).group(1)
-        self.assertLessEqual(len(re.findall(r"<button", right)), 4)
+        left = INDEX[INDEX.index('<div class="dock-side dock-left">'):INDEX.index('<button id="orb"')]
+        start = INDEX.index('<div class="dock-side dock-right">')
+        right = INDEX[start:INDEX.index("</nav>", start)]
+        ids = lambda html: re.findall(r'<button[^>]*?(?:id="([\w-]+)"|data-tool="(\w+)")', html)
+        names = lambda html: [a or b for a, b in ids(html)]
+        self.assertEqual(names(left), ["btn-status", "btn-panel", "btn-note", "btn-widgets", "btn-more"])      # status, chat, note, cards, more
+        self.assertEqual(names(right), ["pen", "eraser", "btn-ink", "btn-undo", "btn-redo", "btn-clear"])      # only drawing on the right
 
     def test_rarely_used_buttons_are_in_more_each_with_a_line_saying_what_they_do(self):
         more = re.search(r'<div id="more-menu".*?</div>\s*<button id="btn-mic"', INDEX, re.S).group(0)
@@ -94,22 +99,50 @@ class Clarity(unittest.TestCase):
         self.assertIn("voice.interrupt()", APP)                               # while it talks, a tap stops it
 
 
+class OrbAndButtons(unittest.TestCase):
+    CSS = (WEB / "dock.css").read_text("utf-8")
+
+    def test_the_orb_is_a_cell_of_the_bar_that_cannot_paint_over_its_neighbours(self):
+        self.assertIn("grid-column: 2", self.CSS)                                     # the middle column, not a floating element
+        self.assertIn("overflow-x: clip", self.CSS)                                   # anything wider than the column is cut off
+        self.assertRegex(self.CSS, r"\.dock-side[^{]*\{[^}]*z-index: 3")             # the buttons are drawn above it
+        self.assertIn("minmax(max-content, 1fr)", self.CSS)                           # the sides always get the room their buttons need
+        for size in ("compact", "tight", "micro"):
+            self.assertIn(f'data-size="{size}"', self.CSS)
+        self.assertIn("micro", (WEB / "dockmenus.js").read_text("utf-8"))
+
+    def test_the_dots_stay_inside_the_orb_column(self):
+        orb = (WEB / "orb.js").read_text("utf-8")
+        self.assertIn("S * 0.25 * swell", orb)                                        # about 0.41 of the canvas from the middle at the loudest
+        for col, size in ((230, 264), (150, 180), (124, 150), (100, 118)):
+            self.assertLessEqual(0.42 * size, col / 2 + 1, f"column {col} px is narrower than the loudest orb of {size} px")
+        for col, size in ((300, 330), (210, 250), (160, 190)):
+            self.assertLessEqual(0.42 * size, col / 2 + 1, f"touch: column {col} px is narrower than the loudest orb of {size} px")
+
+
 class StatusPanel(unittest.TestCase):
     STATUS = (WEB / "status.js").read_text("utf-8")
     CSS = (WEB / "statuspanel.css").read_text("utf-8")
 
-    def test_it_is_a_panel_on_the_left_outside_the_bar_and_its_button_is_on_the_left_of_the_bar(self):
-        panel = INDEX.index('<aside id="status-menu"')
-        bar = INDEX.index('<nav id="toolbar"')
-        self.assertLess(panel, bar)                                                  # not inside the bar any more
-        self.assertIn("left: 12px", self.CSS)
+    def test_it_is_a_panel_flush_with_the_left_edge_like_the_chat_and_its_button_is_on_the_left_of_the_bar(self):
+        app = INDEX.index('<div id="app">')
+        panel, main, chat = INDEX.index('<aside id="status-menu"'), INDEX.index('<main id="stage">'), INDEX.index('<aside id="panel">')
+        self.assertTrue(app < panel < main < chat)                                    # a sibling of the board and the chat, on the left of the board
+        self.assertIn("position: static", self.CSS)                                   # in the layout, not floating over the board
+        self.assertIn("border-right", self.CSS)
+        self.assertIn("border-radius: 0", self.CSS)
         left = INDEX[INDEX.index('<div class="dock-side dock-left">'):INDEX.index('<button id="orb"')]
         self.assertIn('id="btn-status"', left)
         self.assertNotIn('id="btn-status"', INDEX[INDEX.index('<div class="dock-side dock-right">'):])
 
+    def test_it_closes_in_the_modern_look_too(self):
+        # the modern rule that sets display is more specific than a plain [hidden] rule, so it needs its own: without it the panel never closed
+        self.assertIn("html.modern #status-menu.status-drawer[hidden]", self.CSS)
+        for needle in ("#status-close", "toggle(false)"):
+            self.assertIn(needle, self.STATUS)
+
     def test_it_can_stay_open_next_to_the_chat(self):
         self.assertNotIn("document.addEventListener('click'", self.STATUS)             # clicking elsewhere (the chat, the board) does not close it
-        self.assertIn("position: absolute", self.CSS)                                # an overlay: the chat panel keeps its own place on the right
         self.assertIn("setPanel", APP)
         self.assertIn("key === 's'", APP)                                            # S opens and closes it
 
