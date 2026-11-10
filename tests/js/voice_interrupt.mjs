@@ -146,12 +146,69 @@ const checks = {
     assert.equal(voice.enabled, false);
     assert.equal(voice.preference(), false);
   },
-  async 'hearing the name while voice is off says so instead of staying silent'() {
+  async 'with voice off the name does nothing at all (and the PC closes its microphone, so it is not even heard)'() {
     const { voice } = setup({ offline: true, enabled: false });
     voice.wake();
-    assert.equal(toasts.length, 1);
-    assert.match(toasts[0], /voice is switched off/);
+    assert.equal(toasts.length, 0);
     assert.equal(log.includes('recognition.start'), false);
+    assert.equal(voice.awaitUntil, 0);
+  },
+  async 'when the PC understands the command too, the name only plays the listening sound: no cloud recognizer is started'() {
+    const { voice } = setup({ offline: true });
+    voice.offlineCommands = true;
+    voice.wake();
+    assert.equal(log.includes('recognition.start'), false, 'nothing to wait for: the PC is already listening to what follows');
+    assert.ok(voice.awaitUntil > Date.now());
+  },
+  async 'without that (the old way) the name starts the cloud recognizer as before'() {
+    const { voice } = setup({ offline: true });
+    voice.wake();
+    assert.ok(log.includes('recognition.start'));
+  },
+  async 'a command the PC understood is handled like a spoken one'() {
+    const { voice, asked } = setup({ offline: true });
+    voice.offlineCommands = true;
+    voice.wake();
+    voice.heardCommand('what is the weather like today');
+    await tick();
+    assert.deepEqual(asked, ['what is the weather like today']);
+    assert.equal(voice.awaitUntil, 0);
+  },
+  async 'a command from the PC goes through the page commands first (show off, privacy, lights...)'() {
+    const { voice, asked } = setup({ offline: true });
+    const special = [];
+    voice.special = (text) => { special.push(text); return text === 'show off'; };
+    voice.heardCommand('show off');
+    voice.heardCommand('tell me a joke');
+    await tick();
+    assert.deepEqual(special, ['show off', 'tell me a joke']);
+    assert.deepEqual(asked, ['tell me a joke']);
+  },
+  async 'nothing after the name says so, and a command while voice is off is ignored'() {
+    const { voice, asked } = setup({ offline: true });
+    voice.heardCommand('');
+    assert.equal(asked.length, 0);
+    const off = setup({ offline: true, enabled: false });
+    off.voice.heardCommand('turn on the lights');
+    await tick();
+    assert.equal(off.asked.length, 0);
+  },
+  async '"stop" from the PC ends an answer in progress'() {
+    const { voice, chat } = setup({ offline: true, busy: true });
+    voice.heardCommand('stop');
+    await tick();
+    assert.equal(chat.stops, 1);
+  },
+  async 'turning voice on or off tells the PC, so its microphone opens or closes'() {
+    const sent = [];
+    globalThis.fetch = (url, opts) => { sent.push([url, JSON.parse(opts.body)]); return Promise.resolve({}); };
+    const { voice } = setup({ offline: true, enabled: false });
+    voice.start();
+    voice.stop();
+    delete globalThis.fetch;
+    assert.deepEqual(sent.map(([url, body]) => [url, body.on]), [['/api/wake', true], ['/api/wake', false]]);
+    assert.equal(sent[0][1].client, voice.client);
+    assert.ok(voice.client.length > 4);
   },
   async 'JARVIS never says its own name aloud, so its voice cannot wake it (or interrupt it)'() {
     const { voice } = setup({ offline: true });

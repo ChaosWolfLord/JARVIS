@@ -132,7 +132,8 @@ export class Status {
     else rows.push({ name: 'Voice', state: 'idle', text: 'Off', act: { label: 'Turn on', run: () => this.voice.toggle() } });
 
     const w = i.wake || {};
-    if (w.running) rows.push({ name: 'Wake word', state: 'ok', text: `Hears “Jarvis” on this PC${w.device ? ` · ${w.device.trim().replace(/\s*\($/, '')}` : ''}` });
+    if (w.running && !w.listening) rows.push({ name: 'Wake word', state: 'idle', text: 'Microphone closed', hint: 'Voice is off, so nothing on this PC listens. Tap the orb (or press M) to turn it on.' });
+    else if (w.running) rows.push({ name: 'Wake word', state: 'ok', text: `Hears “Jarvis” on this PC${w.device ? ` · ${w.device.trim().replace(/\s*\($/, '')}` : ''}` });
     else if (w.error) rows.push({ name: 'Wake word', state: 'warn', text: 'Not running', hint: w.error });
 
     const ph = this.phone;

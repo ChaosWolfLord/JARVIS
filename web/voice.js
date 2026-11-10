@@ -69,6 +69,8 @@ export class Voice {
     this.captionTimer = null;
     this.voice = null;
     this.offline = false;     // true when the PC's offline wake word is running: the cloud recognizer only runs for a command
+    this.offlineCommands = false;   // true when the PC also understands the command after the name (so the cloud recognizer is not needed at all)
+    this.client = (crypto.randomUUID && crypto.randomUUID()) || `page-${Math.random().toString(36).slice(2)}`;     // this page's id, for the PC's microphone switch
     this.windowUntil = 0;     // offline mode: the recognizer stays open for the command until this time
     this.windowTimer = null;
     this.settings = { name: '', rate: 1, pitch: 0.9 };
@@ -89,6 +91,10 @@ export class Voice {
     this.rec.interimResults = true;
     this.rec.lang = 'en-US';
     this.rec.onstart = () => { this.listening = true; };
+    // The PC's microphone follows this page's voice switch: while voice is on, say so every few seconds (a page that goes away stops counting),
+    // and when the page closes say it is off at once.
+    setInterval(() => { if (this.enabled) this.syncServer(true); }, 6000)?.unref?.();
+    window.addEventListener?.('pagehide', () => { try { navigator.sendBeacon('/api/wake', new Blob([JSON.stringify({ client: this.client, on: false })], { type: 'application/json' })); } catch { /* nothing to do */ } });
     this.rec.onresult = (e) => this.onResult(e);
     this.rec.onend = () => this.onEnd();
     this.rec.onerror = (e) => this.onError(e);
@@ -105,21 +111,32 @@ export class Voice {
     if (this.enabled) { this.stop(); this.start(); }       // restart in the right mode
   }
 
-  /** The PC heard "Jarvis" (offline): listen for the command that follows. */
+  /** Tells the PC whether voice is on here, so it opens or closes its microphone: with voice off, nothing listens for "Jarvis". */
+  syncServer(on) {
+    fetch('/api/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client: this.client, on }) }).catch(() => {});
+  }
+
+  /** The PC heard "Jarvis" (offline). Play the listening sound; the command follows from the PC (or, without that, from the browser). */
   wake() {
-    if (this.supported && this.offline && !this.enabled) {
-      this.toast('I heard “Jarvis”, but voice is switched off. Press the mic button (or M).');
-      return;
-    }
-    if (!this.supported || !this.enabled || !this.offline) return;
+    if (!this.supported || !this.enabled || !this.offline) return;         // voice is off here: nothing to do (the PC's microphone is closed then, anyway)
     if (this.speaking || this.chat.busy) this.interrupt();       // saying "Jarvis" over an answer cuts it off, then JARVIS listens
     this.cue();
-    this.awaitUntil = Date.now() + FOLLOW_UP_MS;
+    this.awaitUntil = Date.now() + FOLLOW_UP_MS + 1500;
+    this.show('Listening…', FOLLOW_UP_MS);
+    if (this.offlineCommands) return;                            // the PC is already listening to what follows: no waiting for a recognizer to start
     this.windowUntil = this.awaitUntil + 1500;
-    this.show('Yes? Go ahead…', FOLLOW_UP_MS);
     this.beginRecognition();
     clearTimeout(this.windowTimer);
     this.windowTimer = setTimeout(() => this.closeWindow(), this.windowUntil - Date.now() + 200);
+  }
+
+  /** What the PC understood after "Jarvis" ("" if nothing followed). It was heard on the PC, including the words said right after the name. */
+  heardCommand(text) {
+    if (!this.supported || !this.enabled) return;
+    this.awaitUntil = 0;
+    const command = String(text || '').trim();
+    if (!command) { this.show('I didn’t catch a command. Say “Jarvis…” again.', 3000); return; }
+    this.dispatch(command);
   }
 
   /** Cuts JARVIS off mid-answer: the voice stops at once and any answer still being worked out is dropped. Resolves when it is ready for the next command. */
@@ -166,6 +183,7 @@ export class Voice {
 
   start() {
     this.enabled = true;
+    this.syncServer(true);
     this.button.classList.add('on');
     if (this.offline) {                                    // the PC listens for the name; nothing goes to the cloud until then
       this.show('Listening for “Jarvis…” (on this PC)', 3000);
@@ -181,6 +199,7 @@ export class Voice {
 
   stop() {
     this.enabled = false;
+    this.syncServer(false);                                // the PC's microphone closes too
     this.awaitUntil = 0;
     clearInterval(this.watchdog);
     clearTimeout(this.windowTimer);

@@ -105,11 +105,16 @@ def find_speakers() -> None:
 
 
 def start_wake() -> None:
-    """Offline wake word: when the name is heard, tell every open page so it can start listening for the command."""
+    """Offline wake word: when the name is heard, tell every open page (so it can play its listening sound), then send what was said after it."""
     loop = wake.loop
+
+    def tell(event: dict) -> None:
+        asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop)
+
     wake.service = wakeword.WakeWord(
-        lambda: asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps({"type": "wake"})), loop),
+        lambda: tell({"type": "wake"}),
         device=os.getenv("JARVIS_WAKEWORD_DEVICE") or None,
+        on_command=lambda text: tell({"type": "wake_command", "text": text}),
     )
     wake.service.start()
 
@@ -237,6 +242,21 @@ class LightName(BaseModel):
 
 class SpokenLight(BaseModel):
     text: str = Field(min_length=1, max_length=300)
+
+
+class WakeVote(BaseModel):
+    client: str = Field(min_length=1, max_length=64)
+    on: bool
+
+
+@app.post("/api/wake")
+def wake_vote(req: WakeVote):
+    """A page says whether voice is on. The PC's microphone is open only while at least one page that said so lately wants it: with voice
+    off, nothing on this PC listens for "Jarvis"."""
+    if wake.service:
+        wake.service.vote(req.client, req.on)
+        return wake.service.status()
+    return {"running": False, "listening": False, "error": ""}
 
 
 def _light_view() -> dict:

@@ -306,6 +306,7 @@ pen.onReminder = (m) => {
 // A phone paired with JARVIS asked for something that changes the wall (a note, a timer, a widget): do it here.
 pen.onPhoneEvent = (ev) => { ambient.poke(); chat.applyRemote(ev); };
 pen.onCommand = (text) => { ambient.poke(); showoff.handleVoice(text); };
+pen.onWakeCommand = (text) => { ambient.poke(); voice.heardCommand(text); };
 const phoneLink = new PhoneLink({ root: $('status-menu'), fit: () => {} });
 status.onOpen = () => phoneLink.refresh();
 // "Claude has finished in JARVIS": announced by the Claude Code hook (see README, "Claude Code alerts").
@@ -341,11 +342,14 @@ let voiceRestored = false;
 status.onInfo = (info) => {
   maybeBoot(info);
   const wake = info.wake || {};
+  voice.offlineCommands = Boolean(wake.commands);
   voice.setOffline(Boolean(wake.running));
   if (!voiceRestored) { voiceRestored = true; voice.restore(Boolean(wake.running)); }      // a reload must not leave the microphone off
   if (voice.supported) {
-    $('voice-note').textContent = wake.running
-      ? `The wake word “Jarvis” is detected on this PC (offline)${wake.device ? `, listening on: ${wake.device}` : ''}. Only the command after it goes to the browser’s speech service.${wake.last_text ? ` Last heard: “${wake.last_text}”.` : ''}`
+    $('voice-note').textContent = wake.running && !wake.listening
+      ? 'Voice is off, so this PC’s microphone is closed: nothing can hear “Jarvis”. Turn voice on (tap the orb, or press M) to use the offline wake word.'
+      : wake.running
+      ? `The wake word “Jarvis” is detected on this PC (offline)${wake.device ? `, listening on: ${wake.device}` : ''}. ${wake.commands ? 'It also understands the command after it on this PC, so nothing is sent to the internet, and its microphone is only open while voice is on.' : 'Only the command after it goes to the browser’s speech service.'}${wake.last_text ? ` Last heard: “${wake.last_text}”.` : ''}`
       : wake.error
         ? `Offline wake word is on but not working: ${wake.error}`
         : 'The wake word is heard by the browser’s speech service (it sends what it hears to Google or Microsoft). For an offline one, see the README.';
