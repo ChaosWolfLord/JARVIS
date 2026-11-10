@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.net.http.SslCertificate;
 import android.net.http.SslError;
+import android.os.Build;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -654,6 +655,30 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void heard(String id) {
             if (ok() && id != null) Reminders.heard(MainActivity.this, id);
+        }
+
+        /** Do reminders ring like a call (the call screen, Answer/Decline)? It never overrides silent mode or Do Not Disturb. */
+        @JavascriptInterface
+        public boolean callsOn() { return ok() && Notify.callsOn(MainActivity.this); }
+
+        @JavascriptInterface
+        public void setCallsOn(boolean on) {
+            if (ok()) prefs.edit().putBoolean("calls", on).apply();
+        }
+
+        /** Can a call open its screen over the lock screen? (Android 14 and later lets you turn that off for an app.) */
+        @JavascriptInterface
+        public boolean callScreenAllowed() { return ok() && Notify.fullScreenAllowed(MainActivity.this); }
+
+        /** Opens the phone's own page where the call screen can be allowed. */
+        @JavascriptInterface
+        public void allowCallScreen() {
+            if (!ok() || Build.VERSION.SDK_INT < 34) return;
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, android.net.Uri.parse("package:" + getPackageName())));
+                } catch (Exception ignored) { }
+            });
         }
 
         @JavascriptInterface

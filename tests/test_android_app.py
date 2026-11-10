@@ -24,7 +24,7 @@ class Permissions(unittest.TestCase):
     def test_only_the_permissions_the_features_need(self):
         asked = sorted(re.findall(r'uses-permission android:name="android\.permission\.(\w+)"', MANIFEST))
         self.assertEqual(asked, sorted(["INTERNET", "RECORD_AUDIO", "POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "USE_EXACT_ALARM", "SCHEDULE_EXACT_ALARM",
-                                        "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC"]))
+                                        "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC", "USE_FULL_SCREEN_INTENT"]))
 
     def test_only_the_boot_receiver_can_be_reached_from_outside(self):
         self.assertRegex(MANIFEST, r'<receiver android:name="\.AlarmReceiver" android:exported="false"')
@@ -38,6 +38,56 @@ class Permissions(unittest.TestCase):
 
     def test_old_phones_that_cannot_check_the_pin_are_not_supported(self):
         self.assertRegex((ROOT / "android" / "app" / "build.gradle.kts").read_text("utf-8"), r"minSdk = 29")
+
+
+PHONE = APP / "java" / "dev" / "jarvis" / "phone"
+
+
+class ReminderCalls(unittest.TestCase):
+    """"JARVIS calls you": a reminder rings like a call, but never overrides silent mode or Do Not Disturb."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sources = {p.name: p.read_text("utf-8") for p in PHONE.glob("*.java")}
+        cls.all = chr(10).join(cls.sources.values())
+
+    def test_nothing_bypasses_silent_mode_or_do_not_disturb(self):
+        for banned in ("setBypassDnd", "USAGE_ALARM", "STREAM_ALARM", "STREAM_RING", "setStreamVolume", "setRingerMode", "setInterruptionFilter",
+                       "ACCESS_NOTIFICATION_POLICY", "MODIFY_AUDIO_SETTINGS", "RingtoneManager.getRingtone", "MediaPlayer"):
+            self.assertNotIn(banned, self.all, banned)
+        self.assertNotIn("ACCESS_NOTIFICATION_POLICY", MANIFEST)
+
+    def test_the_ring_is_the_phones_own_notification_sound(self):
+        notify = self.sources["Notify.java"]
+        self.assertIn("USAGE_NOTIFICATION)", notify)
+        self.assertIn("FLAG_INSISTENT", notify)
+        self.assertIn("CATEGORY_REMINDER", notify[notify.index("static void call("):])
+        self.assertNotIn("CATEGORY_CALL", notify)                         # Do Not Disturb lets calls through; this is a reminder
+        self.assertIn("setTimeoutAfter(CALL_RINGS_MS)", notify)
+        self.assertNotIn("Ringtone", self.sources["CallActivity.java"])    # the call screen makes no sound of its own until you answer
+
+    def test_a_reminder_rings_as_a_call_only_when_switched_on_and_on_time(self):
+        ring = self.sources["Reminders.java"]
+        self.assertIn("Notify.callsOn(c) && late <= 120_000", ring)
+        self.assertIn("else Notify.reminder(", ring)
+        self.assertIn('getBoolean("calls", true)', self.sources["Notify.java"])
+
+    def test_the_call_screen_is_private_and_works_over_the_lock_screen(self):
+        self.assertRegex(MANIFEST, r'<activity\s+android:name="\.CallActivity"\s+android:exported="false"')
+        self.assertIn('android:showWhenLocked="true"', MANIFEST)
+        self.assertIn("setFullScreenIntent(", self.sources["Notify.java"])
+
+    def test_the_page_can_switch_it_on_and_off(self):
+        for name in ("callsOn", "setCallsOn", "callScreenAllowed", "allowCallScreen"):
+            self.assertIn(name, bridge_methods())
+        self.assertIn("setCallsOn(", PHONE_JS)
+        self.assertIn('id="opt-call"', (ROOT / "web" / "phone" / "phone.html").read_text("utf-8"))
+
+    def test_what_you_say_back_is_understood(self):
+        call = self.sources["CallActivity.java"]
+        self.assertIn("static int minutesIn(", call)
+        self.assertIn("static boolean isSnooze(", call)
+        self.assertIn("static boolean isThanks(", call)
 
 
 class Pinning(unittest.TestCase):

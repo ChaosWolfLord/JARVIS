@@ -160,6 +160,7 @@ function start() {
   if (app) {
     $('bg-row').hidden = false;
     $('opt-bg').checked = app.backgroundAlerts();
+    showCalls();
   }
   showUpdates();
   syncReminders();
@@ -562,6 +563,16 @@ $('rem-form').addEventListener('submit', async (e) => {
   renderReminders();
 });
 $('opt-bg').addEventListener('change', (e) => { app?.setBackgroundAlerts(e.target.checked); });
+$('opt-call').addEventListener('change', (e) => { app?.setCallsOn(e.target.checked); showCalls(); });
+$('call-allow').addEventListener('click', () => app?.allowCallScreen());
+
+// "JARVIS calls you" (Android app): reminders ring like a call. The switch lives on the phone; the extra button shows only when the phone is holding back the lock-screen call screen.
+function showCalls() {
+  if (!app || typeof app.callsOn !== 'function') return;
+  $('call-row').hidden = false;
+  $('opt-call').checked = app.callsOn();
+  $('call-allow').hidden = !(app.callsOn() && typeof app.callScreenAllowed === 'function' && !app.callScreenAllowed());
+}
 $('opt-upd').addEventListener('change', (e) => { app?.setUpdates?.(e.target.checked); });
 $('upd-now').addEventListener('click', () => app?.checkUpdates?.());
 window.__alert = (ev) => alertUser(ev);                     // the app hands over an alarm that is ringing while the page is open
@@ -622,6 +633,7 @@ function startLocal() {
   $('opt-awake').checked = prefs.awake;
   $('bg-row').hidden = false;
   $('opt-bg').checked = app.backgroundAlerts();
+  showCalls();
   showUpdates();
   if (!$('log').childElementCount) {
     add('note', Brain.keyCount() ? 'Your PC isn’t reachable, so I’m running on the phone: chat, web search, weather, reminders and timers, and what I remember about you. Lights, music and the board need the PC.' : 'No AI keys on this phone yet. Connect to the PC once and copy them (menu, AI keys), then I can answer without it.');

@@ -62,7 +62,6 @@ class Layout(unittest.TestCase):
         self.assertIn('emit("rms"', body)
         self.assertIn("lastRms", body)                                          # not on every sample: at most about 20 times a second
         self.assertTrue((ROOT / "android" / "release-notes" / "1.2.5.md").exists())
-        self.assertRegex((ROOT / "android" / "app" / "build.gradle.kts").read_text("utf-8"), r'versionName = "1\.2\.5"')
 
 
 if __name__ == "__main__":

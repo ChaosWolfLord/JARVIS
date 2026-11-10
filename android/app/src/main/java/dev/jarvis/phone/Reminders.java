@@ -236,7 +236,8 @@ final class Reminders {
             if (!hit.optBoolean("pc")) { /* kept as a "created and fired" entry until the PC hears about it */ }
             write(c, a);
             String text = hit.optString("text");
-            Notify.reminder(c, id, late > 120_000 ? "Reminder (late)" : "Reminder", text);
+            if (Notify.callsOn(c) && late <= 120_000) Notify.call(c, id, text);      // rings like a call (a reminder that came due while the phone was off just shows, marked late)
+            else Notify.reminder(c, id, late > 120_000 ? "Reminder (late)" : "Reminder", text);
             MainActivity.deliver(new JSONObject().put("type", "push").put("title", "Reminder").put("text", text).put("rid", id).toString());
         } catch (JSONException ignored) { }
     }
