@@ -372,7 +372,16 @@ public class MainActivity extends Activity {
 
             @Override public void onReadyForSpeech(Bundle p) { emit("start", ""); }
             @Override public void onBeginningOfSpeech() { }
-            @Override public void onRmsChanged(float v) { }
+            private long lastRms = 0;
+
+            /** How loud you are, so the orb moves with your voice (about -2 to 10 on the phone's scale, sent as 0 to 1, at most 20 times a second). */
+            @Override
+            public void onRmsChanged(float v) {
+                long now = android.os.SystemClock.uptimeMillis();
+                if (now - lastRms < 50) return;
+                lastRms = now;
+                emit("rms", String.valueOf(Math.max(0f, Math.min(1f, (v + 2f) / 12f))));
+            }
             @Override public void onBufferReceived(byte[] b) { }
             @Override public void onEndOfSpeech() { }
             @Override public void onEvent(int t, Bundle b) { }

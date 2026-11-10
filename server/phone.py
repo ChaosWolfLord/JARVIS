@@ -395,6 +395,10 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
     def brain_script():
         return page("brain.js", "text/javascript; charset=utf-8")
 
+    @app.get("/orb.js")
+    def orb_script():
+        return page("orb.js", "text/javascript; charset=utf-8")
+
     @app.get("/phone.css")
     def style():
         return page("phone.css", "text/css; charset=utf-8")

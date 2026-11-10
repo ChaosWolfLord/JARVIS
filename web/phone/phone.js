@@ -27,9 +27,37 @@ let token = store.get(TOKEN_KEY);
 let history = [];
 let privateTouched = false;
 let busy = false;
+let speaking = false;               // this phone is reading an answer aloud
+let online = true;                  // the PC answered the last time it was asked
 let controller = null;
 let prefs = { wall: true, speak: false, read: false, auto: true, awake: false };
 try { prefs = { ...prefs, ...JSON.parse(store.get(PREF_KEY) || '{}') }; } catch { /* use the defaults */ }
+
+// ---- the orb: JARVIS's face at the top of the screen. It listens, thinks and speaks with you; tapping it talks, or stops what is going on. ----
+const orb = typeof PhoneOrb === 'undefined' ? null : new PhoneOrb($('orb-canvas'));
+if (typeof PhoneOrb !== 'undefined') new PhoneOrb($('pair-orb'));
+
+function orbState() {
+  return listening ? 'listening' : busy ? 'thinking' : speaking ? 'speaking' : !online && !LOCAL ? 'offline' : 'idle';
+}
+
+function refreshOrb() {
+  const state = orbState();
+  if (orb) orb.state = state;
+  $('stage').dataset.state = state;
+  const canTalk = Boolean(app || (typeof Recognition !== 'undefined' && Recognition));
+  $('orb-label').textContent = { listening: 'Listening… tap to stop', thinking: 'Thinking… tap to stop', speaking: 'Speaking… tap to stop', offline: 'Can’t reach your PC',
+    idle: canTalk ? 'Tap to talk' : 'Type to JARVIS' }[state];
+}
+
+$('orb').addEventListener('click', () => {
+  if (listening) stopListening();
+  else if (busy) controller?.abort();
+  else if (speaking) { speechSynthesis.cancel(); speaking = false; refreshOrb(); }
+  else if (!$('mic').disabled) $('mic').click();
+});
+$('input').addEventListener('focus', () => document.body.classList.add('typing'));
+$('input').addEventListener('blur', () => document.body.classList.remove('typing'));
 
 function show(view) {
   $('pair').hidden = view !== 'pair';
@@ -40,6 +68,8 @@ function setState(text, level) {
   const el = $('state');
   el.textContent = text;
   el.className = level || '';
+  online = level !== 'bad';
+  refreshOrb();
 }
 
 function add(kind, text) {
@@ -121,7 +151,7 @@ function start() {
   $('opt-speak').checked = prefs.speak;
   $('opt-read').checked = prefs.read;
   $('opt-auto').checked = prefs.auto;
-  if (!$('log').childElementCount) add('note', 'Ask anything, or press the microphone and speak.');
+  if (!$('log').childElementCount) add('note', 'Tap the orb and talk, or type below.');
   $('opt-awake').checked = prefs.awake;
   checkConnection();
   setupVoice();
@@ -138,6 +168,7 @@ function start() {
 
 function setBusy(on) {
   busy = on;
+  refreshOrb();
   $('send').textContent = on ? 'Stop' : 'Send';
   $('send').classList.toggle('stop', on);
 }
@@ -227,7 +258,10 @@ async function send(text) {
     history = history.slice(-24);
     if (prefs.read && 'speechSynthesis' in window) {
       speechSynthesis.cancel();
-      speechSynthesis.speak(new SpeechSynthesisUtterance(full.trim().slice(0, 600)));
+      const said = new SpeechSynthesisUtterance(full.trim().slice(0, 600));
+      said.onstart = () => { speaking = true; refreshOrb(); };
+      said.onend = said.onerror = () => { speaking = false; refreshOrb(); };
+      speechSynthesis.speak(said);
     }
   }
   if (!LOCAL) checkConnection();
@@ -290,6 +324,7 @@ function setupVoice() {
 
 function micState(on) {
   listening = on;
+  refreshOrb();
   $('mic').classList.toggle('on', on);
   $('input').placeholder = on ? 'Listening…' : 'Ask JARVIS…';
 }
@@ -315,7 +350,8 @@ function stopListening() {
 
 // The app reports what it heard through this function: start, partial, final, error, end.
 window.__speech = (type, text) => {
-  if (type === 'start') micState(true);
+  if (type === 'rms') orb?.hear(parseFloat(text));                  // how loud you are, from the phone's own recognizer (the Android app)
+  else if (type === 'start') micState(true);
   else if (type === 'partial' || type === 'final') {
     if (type === 'final') finalText = text;
     $('input').value = text;

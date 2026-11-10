@@ -9,7 +9,7 @@
 </head>
 <body>
   <main id="pair" hidden>
-    <div class="orb" aria-hidden="true"></div>
+    <canvas class="orb-canvas big" id="pair-orb" aria-hidden="true"></canvas>
     <h1>JARVIS</h1>
     <p>Pair this phone. On the PC, open the status menu, find <b>Phone</b> and press <b>Show pairing code</b>.</p>
     <form id="pair-form" autocomplete="off">
@@ -21,11 +21,16 @@
   </main>
 
   <div id="chat" hidden>
-    <header>
-      <div class="orb small" aria-hidden="true"></div>
+    <header id="bar">
       <div class="title"><b>JARVIS</b><span id="state">connecting…</span></div>
       <button id="menu-btn" class="icon" aria-label="Settings" aria-expanded="false">⋯</button>
     </header>
+    <section id="stage" aria-label="JARVIS">
+      <button type="button" id="orb" aria-label="Talk to JARVIS: tap to speak" title="Tap to talk">
+        <canvas id="orb-canvas" aria-hidden="true"></canvas>
+      </button>
+      <p id="orb-label" aria-live="polite">Tap to talk</p>
+    </section>
     <section id="menu" hidden aria-label="Settings">
       <header><b>Settings</b><button type="button" id="menu-close" class="icon" aria-label="Close settings">✕</button></header>
 
@@ -90,12 +95,15 @@
     </section>
     <div id="log" aria-live="polite"></div>
     <form id="composer">
-      <textarea id="input" rows="1" placeholder="Ask JARVIS…" autocomplete="off" enterkeyhint="send"></textarea>
-      <button type="button" id="mic" class="icon" aria-label="Speak">🎤</button>
+      <textarea id="input" rows="1" placeholder="Or type to JARVIS…" autocomplete="off" enterkeyhint="send"></textarea>
+      <button type="button" id="mic" class="icon" aria-label="Speak" title="Speak">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
       <button type="submit" id="send">Send</button>
     </form>
     <p id="hint" hidden></p>
   </div>
+  <script src="orb.js"></script>
   <script src="brain.js"></script>
   <script src="phone.js"></script>
 </body>
