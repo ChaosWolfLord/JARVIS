@@ -12,7 +12,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Iterator
 
 import openai
@@ -298,6 +298,30 @@ def _cool_down(target: Target, e: Exception) -> str:
     log.warning("%s %s; resting it for %dh%02dm", target.key, reason, rest // 3600, rest % 3600 // 60)
     log.debug("full error: %s", e)
     return reason
+
+
+def _not_responding(e: Exception) -> bool:
+    """A model that timed out, couldn't be reached, or answered with a server error: it is down or too slow, not out of requests."""
+    return isinstance(e, (openai.APIConnectionError, openai.InternalServerError))
+
+
+def _next_midnight() -> float:
+    """When tomorrow starts on this PC (a model that was not responding is left alone until then)."""
+    now = datetime.now()
+    return (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).timestamp()
+
+
+def rest_until_tomorrow(targets: list[Target]) -> list[Target]:
+    """Leaves models that did not respond alone until tomorrow: every question after that goes straight to a model that works, instead of waiting
+    for the broken one to time out first. Only called once another model has answered, so it is the model that is at fault and not the internet."""
+    until = _next_midnight()
+    rested = [t for t in targets if _cooldown.get(t.key, 0) < until]
+    for t in rested:
+        _cooldown[t.key] = until
+        log.warning("%s did not respond; leaving it alone until tomorrow", t.key)
+    if rested:
+        store.save_cooldowns({k: v for k, v in _cooldown.items() if v > time.time()})
+    return rested
 
 
 # ---- tools ----------------------------------------------------------------
@@ -1155,6 +1179,7 @@ def _run_round(msgs: list[dict], cancel=None) -> Iterator[dict]:
         tools = active_tools()
     skipped: list[tuple[str, str]] = []
     last_error: Exception | None = None
+    silent: list[Target] = []        # models that did not respond in this round
     for target in _candidates():
         send = msgs if _can_see(target) else _strip_images(msgs)
         for attempt in (1, 2):
@@ -1183,9 +1208,15 @@ def _run_round(msgs: list[dict], cancel=None) -> Iterator[dict]:
                 last_error = e
                 why = _cool_down(target, e)
                 skipped.append((target.model, why))
+                if _not_responding(e):
+                    silent.append(target)
                 yield {"type": "notice", "text": f"{target.model} is {why}. Trying the next model."}
                 break
             else:
+                if silent:
+                    rested = rest_until_tomorrow(silent)
+                    if rested:
+                        yield {"type": "notice", "text": f"{', '.join(t.model for t in rested)} did not respond, so I'll skip it until tomorrow."}
                 exact = r.usage is not None
                 prompt, completion = r.usage or _estimate_tokens(send, r)
                 store.record_usage(target.provider, target.model, prompt, completion, exact)
@@ -1247,15 +1278,20 @@ def summarize(messages: list[dict], previous: str = "") -> str:
         {"role": "user", "content": (f"Summary so far: {previous}\n\n" if previous else "") +
          f"New messages:\n{lines}\n\nWrite one summary of everything above in under 120 words. Keep names, numbers, decisions and unfinished tasks. No preamble."},
     ]
+    silent: list[Target] = []
     for target in _candidates():
         store.record_request(target.provider)
         try:
             resp = _client(target).chat.completions.create(model=target.model, messages=_strip_images(ask), max_tokens=400)
         except FALLBACK_ERRORS as e:
             _cool_down(target, e)
+            if _not_responding(e):
+                silent.append(target)
             continue
         except openai.BadRequestError:
             continue
+        if silent:
+            rest_until_tomorrow(silent)
         usage = getattr(resp, "usage", None)
         if usage is not None:
             store.record_usage(target.provider, target.model, getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0, True)
