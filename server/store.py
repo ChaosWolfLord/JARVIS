@@ -65,18 +65,26 @@ def _read(path: Path, default, strict: bool = False):
             time.sleep(delay)
 
 
+_write_lock = threading.Lock()
+
+
 def _write(path: Path, obj) -> None:
-    """Writes via a temp file and rename, retrying while something else (e.g. OneDrive) holds the file."""
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(obj, indent=2), "utf-8")
-    for delay in (*_RETRY_DELAYS, None):
-        try:
-            tmp.replace(path)
-            return
-        except PermissionError:
-            if delay is None:
-                raise
-            time.sleep(delay)
+    """Writes via a temp file and rename, retrying while something else (e.g. OneDrive, a virus scanner) holds the file.
+    One write at a time: two page requests saving settings at once used to fight over the same temp file, and one of them failed with
+    "Permission denied" (a 500 error in the log)."""
+    data = json.dumps(obj, indent=2)
+    with _write_lock:
+        tmp = path.with_suffix(f".{os.getpid()}.tmp")
+        for delay in (*_RETRY_DELAYS, None):
+            try:
+                tmp.write_text(data, "utf-8")
+                tmp.replace(path)
+                return
+            except PermissionError:
+                if delay is None:
+                    tmp.unlink(missing_ok=True)
+                    raise
+                time.sleep(delay)
 
 
 def load_env() -> None:

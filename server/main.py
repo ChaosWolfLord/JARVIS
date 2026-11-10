@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import threading
 import time
@@ -18,6 +19,18 @@ from . import agent, audit, claude_usage, diagnostics, fixes, guard, localcmd, l
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
+
+
+class _QuietResets(logging.Filter):
+    """Windows' event loop logs a scary traceback ("Exception in callback _ProactorBasePipeTransport._call_connection_lost()") whenever a browser or
+    phone drops a connection abruptly. It is harmless and common, and it made JARVIS report "many errors". Everything else is still logged."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        return not (isinstance(exc, (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)) and "_call_connection_lost" in record.getMessage())
+
+
+logging.getLogger("asyncio").addFilter(_QuietResets())
 
 @contextlib.asynccontextmanager
 async def lifespan(_app):

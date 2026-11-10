@@ -10,6 +10,7 @@ The Monitor samples in the background, keeps a few hours of history for the grap
 """
 from __future__ import annotations
 
+import collections
 import ctypes
 import json
 import logging
@@ -213,15 +214,51 @@ def folder_size_mb(path, limit: int = 200_000) -> int:
     return round(total / 2**20)
 
 
-def recent_log_errors(minutes: int = 10, path=None) -> int:
-    """How many error lines JARVIS's log has gained recently (the log lines carry a timestamp only from the supervisor, so this
-    counts errors in the last 400 lines, which is a few minutes of activity)."""
+_log_watch: dict[str, dict] = {}
+
+
+def count_errors(text: str) -> int:
+    """How many errors the lines of log text hold: a traceback is one error, and so is a lone ERROR line (uvicorn's "ERROR: Exception in ASGI
+    application" is followed by a traceback, which must not make it two)."""
+    lines = text.splitlines()
+    total = 0
+    for i, ln in enumerate(lines):
+        if ln.startswith("Traceback (most recent"):
+            total += 1
+        elif re.search(r"\bERROR\b", ln) and not (i + 1 < len(lines) and lines[i + 1].startswith("Traceback (most recent")):
+            total += 1
+    return total
+
+
+def recent_log_errors(minutes: int = 10, path=None, now: float | None = None) -> int:
+    """How many errors JARVIS's log has gained in the last few minutes. The log lines carry no timestamps, so this watches the file as it grows:
+    each look counts what was added since the last one, and what was already in the log when JARVIS started (or when this was first asked) is
+    not new. Before, it counted errors among the last 400 lines whatever their age, so an old burst kept the alert up for days on a quiet log."""
     path = path or (store.STATE / "logs" / "jarvis.log")
+    now = time.time() if now is None else now
     try:
-        lines = path.read_text("utf-8", errors="replace").splitlines()[-400:]
+        size = path.stat().st_size
     except OSError:
+        _log_watch.setdefault(str(path), {"offset": 0, "hits": collections.deque()})        # no log yet: whatever it gets from now on is new
         return 0
-    return sum(1 for ln in lines if re.search(r"\bERROR\b|Traceback \(most recent", ln))
+    watch = _log_watch.get(str(path))
+    if watch is None or size < watch["offset"]:                      # first look, or a fresh log: start from here
+        _log_watch[str(path)] = {"offset": size, "hits": collections.deque()}
+        return 0
+    if size > watch["offset"]:
+        try:
+            with path.open("rb") as f:
+                f.seek(watch["offset"])
+                added = f.read(size - watch["offset"]).decode("utf-8", errors="replace")
+        except OSError:
+            return sum(n for _, n in watch["hits"])
+        watch["offset"] = size
+        found = count_errors(added)
+        if found:
+            watch["hits"].append((now, found))
+    while watch["hits"] and watch["hits"][0][0] < now - minutes * 60:
+        watch["hits"].popleft()
+    return sum(n for _, n in watch["hits"])
 
 
 # ---- alerts ----------------------------------------------------------------------------------------

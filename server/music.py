@@ -13,6 +13,7 @@ Settings in .env (optional): MUSIC_DEVICE=Kitchen speaker (the speaker used when
 """
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import re
@@ -41,6 +42,19 @@ def _local_ip() -> str:
             return sock.getsockname()[0]
     except OSError:
         return ""
+
+
+def _speaker_call(fn):
+    """Whatever goes wrong while talking to a speaker (a timeout, a closed connection) becomes a message the person can act on, not a crash."""
+    @functools.wraps(fn)
+    def inner(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except MusicError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise MusicError(f"the speaker didn't respond ({e.__class__.__name__}).") from None
+    return inner
 
 
 # ---- the real speakers and YouTube Music ------------------------------------------------------------
@@ -145,11 +159,13 @@ class CastBackend:
                     raise MusicError(f"the speaker didn't accept that ({e.__class__.__name__}).") from None
                 self.refresh(force=True)                  # a stale connection: connect again and try once more
 
+    @_speaker_call
     def control(self, device: str, what: str) -> None:
         mc = self._cast(device).media_controller
         mc.update_status()
         {"pause": mc.pause, "resume": mc.play, "stop": mc.stop, "next": mc.queue_next, "previous": mc.queue_prev}[what]()
 
+    @_speaker_call
     def volume(self, device: str, level: float | None = None, delta: float | None = None) -> float:
         cast = self._cast(device)
         current = cast.status.volume_level if cast.status else 0.3
@@ -157,6 +173,7 @@ class CastBackend:
         cast.set_volume(new)
         return new
 
+    @_speaker_call
     def now_playing(self, device: str) -> dict:
         cast = self._cast(device)
         mc = cast.media_controller
