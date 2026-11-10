@@ -7,6 +7,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <!-- the reminder call rings and buzzes only when the phone's ringer is on and Do Not Disturb is off (it never changes those settings) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- optional ("display over other apps", off until you allow it in the menu): lets the call screen open at once even while you are using the phone -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- lets the reminder call open its screen over the lock screen; the phone may ask you to allow it (Android 14 and later) -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -58,6 +63,9 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- rings a reminder call (the ringtone, only when the phone's ringer allows it) -->
+        <service android:name=".CallService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
 
         <!-- optional: listens for alerts from the PC while the app is closed -->
         <service android:name=".AlertService" android:exported="false" android:foregroundServiceType="dataSync" />

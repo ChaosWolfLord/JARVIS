@@ -670,6 +670,21 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean callScreenAllowed() { return ok() && Notify.fullScreenAllowed(MainActivity.this); }
 
+        /** Can the call screen open at once even while the phone is in use ("display over other apps")? */
+        @JavascriptInterface
+        public boolean overlayAllowed() { return ok() && android.provider.Settings.canDrawOverlays(MainActivity.this); }
+
+        /** Opens the phone's own page where "display over other apps" can be allowed for JARVIS. */
+        @JavascriptInterface
+        public void allowOverlay() {
+            if (!ok()) return;
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + getPackageName())));
+                } catch (Exception ignored) { }
+            });
+        }
+
         /** Opens the phone's own page where the call screen can be allowed. */
         @JavascriptInterface
         public void allowCallScreen() {

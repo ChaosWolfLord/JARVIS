@@ -24,7 +24,8 @@ class Permissions(unittest.TestCase):
     def test_only_the_permissions_the_features_need(self):
         asked = sorted(re.findall(r'uses-permission android:name="android\.permission\.(\w+)"', MANIFEST))
         self.assertEqual(asked, sorted(["INTERNET", "RECORD_AUDIO", "POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "USE_EXACT_ALARM", "SCHEDULE_EXACT_ALARM",
-                                        "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC", "USE_FULL_SCREEN_INTENT"]))
+                                        "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC", "USE_FULL_SCREEN_INTENT", "VIBRATE",
+                                        "FOREGROUND_SERVICE_MEDIA_PLAYBACK", "SYSTEM_ALERT_WINDOW"]))
 
     def test_only_the_boot_receiver_can_be_reached_from_outside(self):
         self.assertRegex(MANIFEST, r'<receiver android:name="\.AlarmReceiver" android:exported="false"')
@@ -53,18 +54,29 @@ class ReminderCalls(unittest.TestCase):
 
     def test_nothing_bypasses_silent_mode_or_do_not_disturb(self):
         for banned in ("setBypassDnd", "USAGE_ALARM", "STREAM_ALARM", "STREAM_RING", "setStreamVolume", "setRingerMode", "setInterruptionFilter",
-                       "ACCESS_NOTIFICATION_POLICY", "MODIFY_AUDIO_SETTINGS", "RingtoneManager.getRingtone", "MediaPlayer"):
+                       "ACCESS_NOTIFICATION_POLICY", "MODIFY_AUDIO_SETTINGS", "setStreamMute", "adjustVolume", "setSpeakerphoneOn"):
             self.assertNotIn(banned, self.all, banned)
         self.assertNotIn("ACCESS_NOTIFICATION_POLICY", MANIFEST)
 
-    def test_the_ring_is_the_phones_own_notification_sound(self):
-        notify = self.sources["Notify.java"]
-        self.assertIn("USAGE_NOTIFICATION)", notify)
-        self.assertIn("FLAG_INSISTENT", notify)
-        self.assertIn("CATEGORY_REMINDER", notify[notify.index("static void call("):])
+    def test_the_ringtone_only_plays_when_the_phone_allows_a_call_to_ring(self):
+        service, notify = self.sources["CallService.java"], self.sources["Notify.java"]
+        self.assertIn("RINGER_MODE_NORMAL", service)
+        self.assertIn("INTERRUPTION_FILTER_ALL", service)
+        self.assertIn("RINGER_MODE_SILENT", service)                       # silent mode: no buzz either
+        ring = service[service.index("private void ring()"):]
+        self.assertLess(ring.index("if (mayRing(this))"), ring.index("ringtone.play()"))      # nothing plays before the check
+        self.assertLess(ring.index("if (mayBuzz(this))"), ring.index("vibrator.vibrate("))
+        self.assertEqual(service.count("ringtone.play()"), 1)
+        self.assertEqual(service.count("vibrator.vibrate("), 1)
+        self.assertIn("USAGE_NOTIFICATION_RINGTONE", service)
+        self.assertIn("setSound(null, null)", notify)                      # the notification itself is silent; the service rings
+        self.assertIn("CATEGORY_REMINDER", notify[notify.index("static Notification callNotification("):])
         self.assertNotIn("CATEGORY_CALL", notify)                         # Do Not Disturb lets calls through; this is a reminder
         self.assertIn("setTimeoutAfter(CALL_RINGS_MS)", notify)
-        self.assertNotIn("Ringtone", self.sources["CallActivity.java"])    # the call screen makes no sound of its own until you answer
+        self.assertIn("CALL_RINGS_MS", service)                            # and it hangs up by itself
+        for name in ("Ringtone", "MediaPlayer", "Vibrator"):
+            self.assertNotIn(name, self.sources["CallActivity.java"])      # the call screen makes no sound of its own
+        self.assertRegex(MANIFEST, r'<service android:name="\.CallService" android:exported="false" android:foregroundServiceType="mediaPlayback"')
 
     def test_a_reminder_rings_as_a_call_only_when_switched_on_and_on_time(self):
         ring = self.sources["Reminders.java"]
@@ -78,7 +90,7 @@ class ReminderCalls(unittest.TestCase):
         self.assertIn("setFullScreenIntent(", self.sources["Notify.java"])
 
     def test_the_page_can_switch_it_on_and_off(self):
-        for name in ("callsOn", "setCallsOn", "callScreenAllowed", "allowCallScreen"):
+        for name in ("callsOn", "setCallsOn", "callScreenAllowed", "allowCallScreen", "overlayAllowed", "allowOverlay"):
             self.assertIn(name, bridge_methods())
         self.assertIn("setCallsOn(", PHONE_JS)
         self.assertIn('id="opt-call"', (ROOT / "web" / "phone" / "phone.html").read_text("utf-8"))

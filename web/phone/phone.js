@@ -565,6 +565,8 @@ $('rem-form').addEventListener('submit', async (e) => {
 $('opt-bg').addEventListener('change', (e) => { app?.setBackgroundAlerts(e.target.checked); });
 $('opt-call').addEventListener('change', (e) => { app?.setCallsOn(e.target.checked); showCalls(); });
 $('call-allow').addEventListener('click', () => app?.allowCallScreen());
+$('call-overlay').addEventListener('click', () => app?.allowOverlay());
+document.addEventListener('visibilitychange', () => { if (!document.hidden) showCalls(); });      // back from the phone's page where the call screen is allowed
 
 // "JARVIS calls you" (Android app): reminders ring like a call. The switch lives on the phone; the extra button shows only when the phone is holding back the lock-screen call screen.
 function showCalls() {
@@ -572,6 +574,7 @@ function showCalls() {
   $('call-row').hidden = false;
   $('opt-call').checked = app.callsOn();
   $('call-allow').hidden = !(app.callsOn() && typeof app.callScreenAllowed === 'function' && !app.callScreenAllowed());
+  $('call-overlay').hidden = !(app.callsOn() && typeof app.overlayAllowed === 'function' && !app.overlayAllowed());
 }
 $('opt-upd').addEventListener('change', (e) => { app?.setUpdates?.(e.target.checked); });
 $('upd-now').addEventListener('click', () => app?.checkUpdates?.());
