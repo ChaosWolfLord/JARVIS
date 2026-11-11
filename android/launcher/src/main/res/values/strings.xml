@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="key_service_label">JARVIS Home remote button</string>
-    <string name="key_service_description">Lets JARVIS Home open HDMI when you press the one remote button you chose. It only compares each button press with that one button. It reads nothing on the screen and sends nothing anywhere.</string>
-</resources>

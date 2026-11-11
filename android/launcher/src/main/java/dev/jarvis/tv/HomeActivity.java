@@ -366,8 +366,6 @@ public class HomeActivity extends Activity {
                 });
             }
         }
-        labels.add("Remote button for HDMI...");
-        actions.add(this::hdmiButtonDialog);
         labels.add("Hidden apps...");
         actions.add(this::hiddenDialog);
         labels.add("Reset pinned apps");
@@ -402,66 +400,6 @@ public class HomeActivity extends Activity {
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    // ---- a remote button that opens HDMI ----------------------------------------------------------------------------
-
-    private boolean keyServiceOn() {
-        String on = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        return on != null && on.contains(getPackageName() + "/");
-    }
-
-    private static String describeKey(int code, int scan) {
-        return code == KeyEvent.KEYCODE_UNKNOWN ? "button #" + scan : KeyEvent.keyCodeToString(code).replace("KEYCODE_", "");
-    }
-
-    private SharedPreferences.OnSharedPreferenceChangeListener learned;      // closes the choose-a-button screen when the service has caught the button
-
-    /**
-     * Lets you choose the remote button that opens HDMI. The button is caught by the service, not by this screen: the projector's own
-     * buttons (Miracast, AirPlay, Source, Mouse...) are taken by the system before any app sees them, but the service is shown every
-     * press first. So the service has to be on before a button can be chosen.
-     */
-    private void hdmiButtonDialog() {
-        if (!keyServiceOn()) {
-            keyServiceDialog();
-            return;
-        }
-        int current = prefs.getInt(KeyService.KEY_CODE, KeyService.NONE);
-        String now = current == KeyService.NONE ? "No button is chosen yet." : "Now: " + describeKey(current, prefs.getInt(KeyService.KEY_SCAN, -1)) + ".";
-        AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Remote button for HDMI")
-                .setMessage(now + "\n\nPress the remote button you want to open HDMI. It can be one of the projector's own buttons, like the Miracast one. The arrow keys, OK, Back, Home, Menu, Power and Volume can't be used. Press Back to cancel.")
-                .setNegativeButton("Clear", (d, w) -> {
-                    prefs.edit().remove(KeyService.KEY_CODE).remove(KeyService.KEY_SCAN).apply();
-                    Toast.makeText(this, "HDMI button cleared", Toast.LENGTH_SHORT).show();
-                })
-                .create();
-        learned = (p, key) -> {
-            if (KeyService.KEY_CODE.equals(key)) dialog.dismiss();
-        };
-        prefs.registerOnSharedPreferenceChangeListener(learned);
-        dialog.setOnDismissListener(d -> {
-            prefs.unregisterOnSharedPreferenceChangeListener(learned);
-            prefs.edit().remove(KeyService.LEARNING_UNTIL).apply();
-        });
-        prefs.edit().putLong(KeyService.LEARNING_UNTIL, System.currentTimeMillis() + 60_000).apply();      // the service takes the next button press, for up to a minute
-        dialog.show();
-    }
-
-    private void keyServiceDialog() {
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Turn on the button service first")
-                .setMessage("In Settings, Accessibility, turn on \"JARVIS Home remote button\". It is what sees the remote's buttons in every app. Then come back here and choose the button.")
-                .setPositiveButton("Open settings", (d, w) -> {
-                    try {
-                        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-                    } catch (ActivityNotFoundException | SecurityException e) {
-                        Toast.makeText(this, "Open Settings, then Accessibility, yourself", Toast.LENGTH_LONG).show();
-                    }
-                })
-                .setNegativeButton("Later", null)
                 .show();
     }
 
