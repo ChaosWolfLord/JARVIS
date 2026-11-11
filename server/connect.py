@@ -76,6 +76,47 @@ def google(write: bool = False, email: str | None = None) -> int:
     return 0
 
 
+def install_client(path: str | None = None) -> int:
+    """Puts a Google client file (client_secret_....json from Google Cloud Console) where JARVIS reads it (google_client.json in %LOCALAPPDATA%\\jarvis).
+    With no path it takes the newest client_secret*.json in Downloads or on the Desktop. The old file is kept as google_client.old.json. No secret is printed."""
+    import json
+    import shutil
+    from pathlib import Path
+
+    if path:
+        found = [Path(str(path).strip().strip('"'))]
+    else:
+        found = []
+        for folder in (Path.home() / "Downloads", Path.home() / "Desktop", Path.home() / "OneDrive" / "Downloads", Path.home() / "OneDrive" / "Desktop"):
+            found += list(folder.glob("client_secret*.json")) if folder.is_dir() else []
+        found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    if not found or not found[0].is_file():
+        print("I couldn't find the file. In Google Cloud Console: APIs & Services > Credentials > your Desktop app client > Download JSON.")
+        print("It is saved as client_secret_....json (usually in Downloads). Then run this again, or give its full path:  connect.bat install \"C:\\path\\to\\file.json\"")
+        return 1
+    src = found[0]
+    try:
+        data = json.loads(src.read_text("utf-8-sig"))
+        info = data.get("installed") or data.get("web") or {}
+        ok = bool(info.get("client_id") and info.get("client_secret"))
+    except (OSError, ValueError, AttributeError):
+        ok, info, data = False, {}, {}
+    if not ok:
+        print(f"{src.name} is not a Google client file (it needs a client_id and a client_secret).")
+        return 1
+    if "installed" not in data:
+        print("Warning: this client is not of the type \"Desktop app\". Sign-in may fail; create an OAuth client of type Desktop app and download that one.")
+    dest = google_auth.CLIENT_FILE
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        shutil.copy2(dest, dest.with_name("google_client.old.json"))
+    shutil.copy2(src, dest)
+    print(f"Installed {src.name} (client ...{str(info['client_id'])[-12:]}) as {dest}")
+    print("Next: run connect.bat and finish the sign-in in the browser that opens (choose your account, Advanced > Continue, Allow).")
+    print("You can delete the downloaded file now: it holds a secret and JARVIS has its own copy.")
+    return 0
+
+
 def discord() -> int:
     if not discord_tools.available():
         print(DISCORD_STEPS)
@@ -127,7 +168,9 @@ def main() -> int:
             return google(write="write" in [a.lower() for a in extra], email=next((a for a in extra if "@" in a), None))
         if target == "discord":
             return discord()
-        print("Usage: connect.bat google [write] [you@gmail.com]   |   connect.bat discord")
+        if target == "install":
+            return install_client(args[1] if len(args) > 1 else None)
+        print("Usage: connect.bat google [write] [you@gmail.com]   |   connect.bat discord   |   connect.bat install [path to client_secret.json]")
         return 2
     except KeyboardInterrupt:
         print("\nStopped.")

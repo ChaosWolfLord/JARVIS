@@ -316,6 +316,41 @@ class RunningConnect(unittest.TestCase):
                 self.assertEqual(self.connect.google(), 1)
             self.assertTrue(any(hint in line for line in out), message)
 
+    def test_a_downloaded_client_file_is_installed_where_jarvis_reads_it(self):
+        home = Path(tempfile.mkdtemp())
+        (home / "Downloads").mkdir()
+        old = home / "Downloads" / "client_secret_1.json"
+        new = home / "Downloads" / "client_secret_2_abc.json"
+        old.write_text(json.dumps({"installed": {"client_id": "old-id.apps.googleusercontent.com", "client_secret": "OLD-SECRET"}}), "utf-8")
+        new.write_text(json.dumps({"installed": {"client_id": "new-id-123456789.apps.googleusercontent.com", "client_secret": "NEW-SECRET"}}), "utf-8-sig")   # Windows editors may add a BOM
+        import os
+        os.utime(old, (1, 1))
+        state = Path(tempfile.mkdtemp())
+        (state / "google_client.json").write_text('{"installed": {"client_id": "was", "client_secret": "was"}}', "utf-8")
+        out = []
+        with mock.patch.object(Path, "home", return_value=home), mock.patch.object(google_auth, "CLIENT_FILE", state / "google_client.json"),                 mock.patch("builtins.print", side_effect=lambda *a, **k: out.append(" ".join(map(str, a)))):
+            self.assertEqual(self.connect.install_client(), 0)
+        self.assertEqual(json.loads((state / "google_client.json").read_text("utf-8-sig"))["installed"]["client_id"], "new-id-123456789.apps.googleusercontent.com")
+        self.assertIn("was", (state / "google_client.old.json").read_text("utf-8"))              # the old one is kept
+        shown = " ".join(out)
+        self.assertNotIn("NEW-SECRET", shown)                                                   # no secret is ever printed
+        self.assertIn("connect.bat", shown)
+
+    def test_something_that_is_not_a_client_file_is_refused(self):
+        bad = Path(tempfile.mkdtemp()) / "client_secret_x.json"
+        for text in ("not json", "{}", json.dumps({"installed": {"client_id": "only-an-id"}})):
+            bad.write_text(text, "utf-8")
+            state = Path(tempfile.mkdtemp())
+            with mock.patch.object(google_auth, "CLIENT_FILE", state / "google_client.json"), mock.patch("builtins.print"):
+                self.assertEqual(self.connect.install_client(str(bad)), 1, text)
+            self.assertFalse((state / "google_client.json").exists())
+        with mock.patch("builtins.print"):
+            self.assertEqual(self.connect.install_client(str(bad.with_name("missing.json"))), 1)
+
+    def test_install_is_one_double_click(self):
+        text = (Path(__file__).resolve().parent.parent / "install_google_client.bat").read_text("utf-8")
+        self.assertIn('connect.bat" install', text)
+
     def test_the_sign_in_is_kept_outside_onedrive(self):
         self.assertIn("jarvis", str(google_auth.TOKEN_FILE).lower())
         self.assertNotIn("onedrive", str(google_auth.TOKEN_FILE).lower())
