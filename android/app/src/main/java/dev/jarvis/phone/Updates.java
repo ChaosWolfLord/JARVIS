@@ -1,5 +1,8 @@
 package dev.jarvis.phone;
 
+import android.content.Context;
+import android.content.SharedPreferences;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -35,19 +38,30 @@ final class Updates {
         }
     }
 
-    /** The newer release, or null if this is the newest (or the release isn't usable). Throws when GitHub can't be reached. */
-    static Found check(String installed) throws Exception {
+    /**
+     * The newer release, or null if this is the newest (or the release isn't usable). Throws when GitHub can't be reached.
+     * GitHub is asked "has it changed since this tag?" (If-None-Match): when nothing is new it answers with no body at all, so a check that
+     * finds nothing costs almost no data, and it does not count against GitHub's request limit.
+     */
+    static Found check(Context context, String installed) throws Exception {
+        SharedPreferences prefs = context.getSharedPreferences("jarvis", Context.MODE_PRIVATE);
+        String etag = prefs.getString("upd_etag", ""), saved = prefs.getString("upd_body", "");
         HttpsURLConnection c = (HttpsURLConnection) new URL(API).openConnection();
         c.setConnectTimeout(6000);
         c.setReadTimeout(8000);
         c.setInstanceFollowRedirects(false);
         c.setRequestProperty("Accept", "application/vnd.github+json");
         c.setRequestProperty("User-Agent", "JARVIS-app");
+        if (!etag.isEmpty() && !saved.isEmpty()) c.setRequestProperty("If-None-Match", etag);
         try {
             int code = c.getResponseCode();
             if (code == 404) return null;                                  // no release published yet
+            if (code == 304 && !saved.isEmpty()) return parse(saved, installed);      // unchanged since last time: the answer then still holds
             if (code != 200) throw new IOException("GitHub answered " + code);
-            return parse(read(c.getInputStream()), installed);
+            String body = read(c.getInputStream());
+            String tag = c.getHeaderField("ETag");
+            if (tag != null && tag.length() < 200 && body.length() < 100_000) prefs.edit().putString("upd_etag", tag).putString("upd_body", body).apply();
+            return parse(body, installed);
         } finally {
             c.disconnect();
         }

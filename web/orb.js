@@ -15,6 +15,7 @@ const TAU = Math.PI * 2;
 const DOTS = 760;
 const BANDS = 26;
 const STEPS = 14;                    // colour steps between quiet and loud; dots of one step are drawn in a single pass
+const FRAME_IDLE_MS = 1000 / 24, FRAME_ACTIVE_MS = 1000 / 45;      // how often the sphere is redrawn (it used to be on every screen refresh)
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Points spread evenly over a sphere (a Fibonacci spiral), each with the band of sound it answers to and a private phase.
@@ -137,14 +138,20 @@ export class Orb {
     if (document.hidden || !this.size) return;
     // Calm mode swaps which orb is on show: the one that can't be seen isn't redrawn.
     if (this.follow && !document.body.classList.contains('ambient')) return;
+    // Not every screen refresh: a dim, idle sphere moves gently at 24 frames a second, and one that is listening or speaking at 45. A 144 Hz
+    // monitor used to make this redraw 144 times a second for nothing.
+    const state = this.state;
+    const gap = state === 'idle' || state === 'ready' ? FRAME_IDLE_MS : FRAME_ACTIVE_MS;
+    if (now - this.last < gap - 2) return;
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     const t = now / 1000;
-    const state = this.state;
 
     const target = this.targets(t);
-    for (let b = 0; b < BANDS; b++) this.bands[b] += (target[b] - this.bands[b]) * (target[b] > this.bands[b] ? 0.6 : 0.12);
-    this.level += ((this.levelTarget || 0) - this.level) * 0.25;
+    const steps = Math.max(1, dt * 60);                                       // the smoothing below was tuned for 60 frames a second
+    const rise = 1 - Math.pow(1 - 0.6, steps), fall = 1 - Math.pow(1 - 0.12, steps), follow = 1 - Math.pow(1 - 0.25, steps);
+    for (let b = 0; b < BANDS; b++) this.bands[b] += (target[b] - this.bands[b]) * (target[b] > this.bands[b] ? rise : fall);
+    this.level += ((this.levelTarget || 0) - this.level) * follow;
 
     const spin = reduceMotion ? 0.04 : state === 'thinking' ? 1.7 : state === 'listening' ? 0.5 : state === 'idle' ? 0.12 : 0.28;
     this.yaw += spin * dt;

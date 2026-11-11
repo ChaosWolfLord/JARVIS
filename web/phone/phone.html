@@ -105,6 +105,21 @@
       <button type="submit" id="send">Send</button>
     </form>
     <p id="hint" hidden></p>
+    <div id="share" role="dialog" aria-modal="true" aria-labelledby="share-title" hidden>
+      <div class="sheet">
+        <h2 id="share-title">Shared with JARVIS</h2>
+        <img id="share-img" alt="The picture you shared" hidden>
+        <p id="share-text"></p>
+        <div class="choices">
+          <button type="button" id="share-ask" class="action">Ask JARVIS about it</button>
+          <button type="button" id="share-wall" class="action">Show it on the wall</button>
+          <button type="button" id="share-note" class="action">Add it to the board</button>
+          <button type="button" id="share-open" class="action">Open it on the PC</button>
+          <button type="button" id="share-cancel" class="action">Cancel</button>
+        </div>
+        <p id="share-msg" role="status"></p>
+      </div>
+    </div>
   </div>
   <script src="orb.js"></script>
   <script src="brain.js"></script>

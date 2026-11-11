@@ -39,7 +39,8 @@ export class Status {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !this.menu.hidden && !e.target.closest('input, textarea, select')) this.toggle(false); });
     board.onSaveState = () => this.render();
     this.poll();
-    setInterval(() => this.poll(), POLL_MS);
+    setInterval(() => { if (!document.hidden) this.poll(); }, POLL_MS);      // a minimized window does not keep asking
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.poll(); });
     setInterval(() => { if (!this.menu.hidden) this.render(); }, 1000);
     setInterval(() => { if (!this.menu.hidden) this.loadPhone(); }, 15000);
   }

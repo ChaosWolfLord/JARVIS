@@ -21,6 +21,9 @@ import javax.net.ssl.HttpsURLConnection;
  * set up with, and only accepts the pinned key. It stops by itself when the setting is turned off or the phone is forgotten.
  */
 public class AlertService extends Service {
+    private static final long RETRY_FIRST_MS = 2_000, RETRY_MAX_MS = 5 * 60_000;     // away from home the PC cannot be reached: ask less and less often (every ask wakes the radio)
+    private final Object nap = new Object();
+    private boolean nudged = false;
     private volatile boolean running = false;
     private Thread worker;
 
@@ -43,6 +46,8 @@ public class AlertService extends Service {
             worker = new Thread(this::loop, "alerts");
             worker.setDaemon(true);
             worker.start();
+        } else {
+            synchronized (nap) { nudged = true; nap.notifyAll(); }      // the app was opened: try the PC now instead of waiting out a long pause
         }
         return START_STICKY;
     }
@@ -57,7 +62,7 @@ public class AlertService extends Service {
     private SharedPreferences prefs() { return getSharedPreferences("jarvis", MODE_PRIVATE); }
 
     private void loop() {
-        long wait = 2000;
+        long wait = RETRY_FIRST_MS;
         while (running) {
             SharedPreferences p = prefs();
             if (!p.getBoolean("alerts", false) || p.getString("token", "").isEmpty()) {
@@ -65,18 +70,23 @@ public class AlertService extends Service {
                 return;
             }
             try {
-                if (listen(p.getString("address", ""), p.getString("pin", ""), p.getString("token", ""))) wait = 2000;
+                if (listen(p.getString("address", ""), p.getString("pin", ""), p.getString("token", ""))) wait = RETRY_FIRST_MS;
             } catch (InterruptedException e) {
                 return;
             } catch (Exception e) {
                 // offline, PC off or restarting: try again below
             }
+            boolean early;
             try {
-                Thread.sleep(wait);
+                synchronized (nap) {
+                    if (!nudged) nap.wait(wait);
+                    early = nudged;
+                    nudged = false;
+                }
             } catch (InterruptedException e) {
                 return;
             }
-            wait = Math.min(wait * 2, 60_000);
+            wait = early ? RETRY_FIRST_MS : Math.min(wait * 2, RETRY_MAX_MS);
         }
     }
 

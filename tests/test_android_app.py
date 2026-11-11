@@ -102,6 +102,60 @@ class ReminderCalls(unittest.TestCase):
         self.assertIn("static boolean isThanks(", call)
 
 
+class ShareAndSavings(unittest.TestCase):
+    """"Share to JARVIS", and the things that keep the app light on battery and data."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = {p.name: p.read_text("utf-8") for p in PHONE.glob("*.java")}
+
+    def test_other_apps_can_share_text_and_pictures_to_the_app_and_nothing_else(self):
+        self.assertEqual(len(re.findall(r'<action android:name="android\.intent\.action\.SEND" />', MANIFEST)), 2)
+        self.assertIn('android:mimeType="text/plain"', MANIFEST)
+        self.assertIn('android:mimeType="image/*"', MANIFEST)
+        self.assertNotIn("SEND_MULTIPLE", MANIFEST)
+        self.assertNotIn("READ_EXTERNAL_STORAGE", MANIFEST)                # the shared picture is read through the grant the other app gives
+
+    def test_a_shared_picture_is_only_read_from_a_content_address_shrunk_and_cleaned(self):
+        share = self.src["Share.java"]
+        self.assertIn("SCHEME_CONTENT.equals(uri.getScheme())", share)      # never a file path on the phone
+        self.assertIn("MAX_SIDE = 1920", share)
+        self.assertIn("CompressFormat.JPEG", share)                       # saved again, which drops the location and camera details
+        self.assertIn("MAX_TEXT = 4000", share)
+
+    def test_nothing_shared_is_sent_without_a_tap(self):
+        js = PHONE_JS
+        self.assertIn("window.__shareReady", js)
+        for call in ("shareToPc('wall')", "shareToPc('note')", "shareToPc('open')"):
+            self.assertIn(call, js)
+        for line in js.splitlines():                                      # the only places that send what was shared are button handlers
+            if "shareToPc(" in line and "function" not in line:
+                self.assertIn("addEventListener('click'", line)
+
+    def test_the_page_and_the_app_agree_about_sharing(self):
+        for name in ("takeShare", "sharedImage", "discardShare"):
+            self.assertIn(name, bridge_methods())
+            self.assertIn(name, PHONE_JS)
+
+    def test_checking_for_updates_costs_no_data_when_nothing_changed(self):
+        updates = self.src["Updates.java"]
+        self.assertIn("If-None-Match", updates)
+        self.assertIn("code == 304", updates)
+        self.assertIn('"upd_etag"', updates)
+
+    def test_the_alert_listener_backs_off_when_the_pc_is_out_of_reach(self):
+        alerts = self.src["AlertService.java"]
+        self.assertIn("RETRY_MAX_MS = 5 * 60_000", alerts)
+        self.assertIn("nap.notifyAll()", alerts)                          # opening the app tries again at once
+
+    def test_the_orbs_are_not_redrawn_on_every_screen_refresh(self):
+        for path in (ROOT / "web" / "orb.js", ROOT / "web" / "phone" / "orb.js"):
+            text = path.read_text("utf-8")
+            self.assertIn("FRAME_IDLE_MS", text, path.name)
+            self.assertIn("FRAME_ACTIVE_MS", text, path.name)
+            self.assertIn("document.hidden", text, path.name)
+
+
 class Pinning(unittest.TestCase):
     def test_the_certificate_is_only_accepted_when_it_matches_the_pin(self):
         self.assertEqual(JAVA.count("handler.proceed()"), 1, "there must be exactly one place that accepts a certificate")

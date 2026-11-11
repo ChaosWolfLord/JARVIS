@@ -36,7 +36,7 @@ HISTORY_EVERY = 10.0     # seconds between points kept for the graphs
 HISTORY_POINTS = 1080    # 3 hours of graph points
 DISKS_EVERY = 60.0
 NET_EVERY = 30.0
-SLOW_EVERY = 300.0       # drive health, antivirus, firewall, error log
+SLOW_EVERY = 900.0       # drive health, antivirus, firewall, error log (each look starts a PowerShell, so not every few minutes)
 CHECK_EVERY = 30.0       # how often the alert rules are looked at
 
 

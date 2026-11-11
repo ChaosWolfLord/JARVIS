@@ -11,11 +11,11 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, privacy, reminders as reminders_mod, runner, store, wakeword
+from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, reminders as reminders_mod, runner, store, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -398,6 +398,25 @@ async def post_notify(req: Notice, x_jarvis_token: str | None = Header(default=N
 def get_apps():
     """The apps JARVIS may open (from the Start Menu, minus everything unsafe) and the programs currently running."""
     return {"enabled": apps_mod.available(), "apps": apps_mod.apps.names(), "running": apps_mod.apps.running()}
+
+
+@app.get("/api/picture/{pid}")
+def get_picture(pid: str):
+    """A picture the wall is showing (found by an id that only this PC makes, so no other file can be asked for)."""
+    found = pictures_mod.find(pid)
+    if not found:
+        raise HTTPException(404, "No such picture.")
+    path, mime = found
+    return FileResponse(path, media_type=mime, headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+
+@app.post("/api/picture/voice")
+def voice_picture(req: SpokenLight):
+    """"Show me a picture of a red panda": found and put on the wall with no AI request. Anything else is left for the AI."""
+    result = pictures_mod.handle_voice(req.text)
+    if result["handled"]:
+        audit.record("pictures", req.text[:100], "ok" if result.get("ok") else "error")
+    return result
 
 
 @app.post("/api/apps/voice")

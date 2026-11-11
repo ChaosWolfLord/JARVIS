@@ -20,6 +20,7 @@ import { PhoneLink } from './phonelink.js';
 import { Sounds } from './sounds.js';
 import { Boot } from './boot.js';
 import { Holo } from './holo.js';
+import { Picture } from './picture.js';
 import { News } from './news.js';
 import { ShowOff } from './showoff.js';
 import { Ambient } from './ambient.js';
@@ -228,6 +229,19 @@ widgets.onToggle = (id, show) => sounds.play(show ? 'open' : 'close');
 const holo = new Holo({ el: $('holo') });
 widgets.register({ id: 'holo', title: 'Hologram', icon: '◈', blurb: 'Rotating 3D models and animated charts: ask JARVIS to show you something',
   el: $('holo'), onShow: () => holo.onShow(), onHide: () => holo.onHide() });
+const pictureUI = new Picture({
+  el: $('picture'),
+  speak: (t) => voice.speak(t),
+  show: (ev) => chat.onPicture(ev),
+});
+widgets.register({ id: 'picture', title: 'Picture', icon: '▣', blurb: 'A photo on the wall: ask JARVIS to show you a picture of something, or share one from your phone',
+  el: $('picture'), onShow: () => pictureUI.onShow(), onHide: () => pictureUI.onHide() });
+chat.onPicture = (ev) => {
+  if (!pictureUI.show(ev)) return;
+  widgets.set('picture', true, false);     // not remembered: a "show me" card shouldn't come back after a restart
+  sounds.play('holo');
+  ambient.poke();
+};
 chat.onHolo = (ev) => {
   widgets.set('holo', true, false);       // not remembered: a "show me" card shouldn't come back after a restart
   holo.show(ev);
@@ -251,6 +265,7 @@ widgets.register({ id: 'lights', title: 'Lights', icon: '💡', blurb: 'Govee li
 lightsUI.fallback = (command) => { if (!chat.busy) chat.ask(command, { speak: true }); };
 const appsUI = new Apps({ speak: (t) => voice.speak(t) });
 appsUI.fallback = lightsUI.fallback;
+pictureUI.fallback = lightsUI.fallback;
 const musicUI = new Music({ el: $('music'), speak: (t) => voice.speak(t), toast });
 widgets.register({ id: 'music', title: 'Music', icon: '🎵', blurb: 'Play YouTube Music on your speakers',
   el: $('music'), onShow: () => musicUI.onShow(), onHide: () => musicUI.onHide() });
@@ -365,7 +380,7 @@ const privacy = new Privacy({
   onUnlocked: () => { board.sync(); status.poll(); },
 });
 window.jarvis.privacy = privacy;
-voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || appsUI.handleVoice(command);
+voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || pictureUI.handleVoice(command) || appsUI.handleVoice(command);
 chat.onTyped = (text) => voice.special(text);       // typing "show off", "lights off"... in the chat box works like saying it
 $('privacy-lock').addEventListener('click', () => privacy.lock());
 $('privacy-setcode').addEventListener('click', () => {

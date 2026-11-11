@@ -637,6 +637,11 @@ body.ambient #orb-big { transform: translate(-50%, -50%) scale(1); }
 #holo { width: 548px; background: rgba(1, 10, 16, 0.97); }
 #holo-canvas { display: block; width: 520px; height: 360px; border-radius: 8px; background: radial-gradient(ellipse at 50% 55%, rgba(var(--accent-rgb), 0.1), rgba(0, 10, 16, 0.2) 70%); border: 1px solid rgba(var(--accent-rgb), 0.18); }
 #holo header b { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#picture { width: 620px; background: rgba(1, 10, 16, 0.97); }
+#picture header b { max-width: 470px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#picture-frame { display: grid; place-items: center; width: 592px; height: 400px; border-radius: 8px; background: rgba(0, 10, 16, 0.5); border: 1px solid rgba(var(--accent-rgb), 0.18); overflow: hidden; }
+#picture-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+#picture-credit:empty { display: none; }
 #news { width: 780px; }
 #news-viewport { overflow: hidden; white-space: nowrap; mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
 #news-track { display: inline-block; white-space: nowrap; will-change: transform; }

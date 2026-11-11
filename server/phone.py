@@ -11,7 +11,8 @@ How it stays safe:
     sends in a header (never a cookie), so another web page cannot ride on it. The PC keeps only a hash of each token.
   * Anything that would normally ask "Allow?" on the PC (running code, sending a message, closing an app, fixes, anything after
     private data was read) is refused from the phone with a note; you do those on the PC itself.
-  * Things the answer changes on the wall (notes, widgets, timers, holograms) happen on the PC page; the phone just gets a line saying so.
+  * Things the answer changes on the wall (notes, widgets, timers, holograms, pictures) happen on the PC page; the phone just gets a line saying so.
+  * "Share to JARVIS" can send a picture (checked to really be a JPEG, PNG, GIF or WebP, at most 12 MB) or a note or a link to open, and nothing else.
   * The privacy screen locks the phone out too, and every phone message is written to the activity log.
 The connection is encrypted (HTTPS) with a certificate JARVIS makes for itself, because phone browsers only allow the microphone on
 secure pages. The browser warns about it once; that is expected for a certificate that was not bought from an authority.
@@ -39,7 +40,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import audit, persona, reminders as reminders_mod, runner, store
+from . import audit, browser as browser_mod, persona, pictures as pictures_mod, reminders as reminders_mod, runner, store
 
 WEB_PHONE = Path(__file__).resolve().parent.parent / "web" / "phone"
 PHONES_FILE = store.STATE / "phones.json"
@@ -56,7 +57,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
        "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 # Events that change the wall: the PC page performs them. Everything else useful goes to the phone itself.
-WALL_EVENTS = frozenset({"add_note", "board_edit", "widget", "holo", "timer"})
+WALL_EVENTS = frozenset({"add_note", "board_edit", "widget", "holo", "timer", "picture"})
 PHONE_EVENTS = frozenset({"text", "notice", "error", "done", "step", "progress", "private", "summary", "memory"})
 
 
@@ -286,6 +287,11 @@ class PhoneChat(BaseModel):
     speak: bool = False        # also say the answer on the PC's speakers
 
 
+class ShareRequest(BaseModel):
+    what: str = Field(pattern="^(note|open)$")      # put it on the board as a note, or open the link in Chrome on the PC
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class SyncItem(BaseModel):
     lid: str = Field(max_length=40)                # the phone's own id for a reminder the PC has not seen yet
     text: str = Field(max_length=200)
@@ -352,6 +358,8 @@ def wall_line(ev: dict) -> str:
         return f"{'Showing' if ev.get('show') else 'Hid'} the {ev.get('name', '')} widget on the wall"
     if kind == "holo":
         return f"Showing on the wall: {str(ev.get('title', ''))[:60]}"
+    if kind == "picture":
+        return f"Showing the picture on the wall: {str(ev.get('title', ''))[:60]}"
     if kind == "add_note":
         return "Added a note to the board"
     return "Changed the board"
@@ -512,6 +520,49 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
                 events.queues.discard(q)
 
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+    @app.post("/picture")
+    async def picture(request: Request, title: str = "", authorization: str | None = Header(default=None)):
+        """A photo shared from the phone, as the picture's own bytes. It is checked, kept, and put on the wall."""
+        token = bearer(authorization)
+        if is_locked():
+            raise HTTPException(423, "The privacy screen is on.")
+        if not phones.allow_chat(token):
+            raise HTTPException(429, "Slow down a little.")
+        if int(request.headers.get("content-length") or 0) > pictures_mod.MAX_BYTES:
+            raise HTTPException(413, "That picture is too big.")
+        body = b""
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > pictures_mod.MAX_BYTES:
+                raise HTTPException(413, "That picture is too big.")
+        try:
+            pid = pictures_mod.save(body)
+        except pictures_mod.PictureError as e:
+            raise HTTPException(400, str(e)) from None
+        broadcast({"type": "phone_event", "event": pictures_mod.event(pid, title or "From your phone")})
+        audit.record("phone", f"picture shared ({len(body) // 1024} KB)")
+        return {"ok": True, "id": pid}
+
+    @app.post("/share")
+    def share(req: ShareRequest, authorization: str | None = Header(default=None)):
+        """Text or a link shared from the phone: a note on the board, or (for a web address) opened in Chrome on the PC with the usual limits."""
+        token = bearer(authorization)
+        if is_locked():
+            raise HTTPException(423, "The privacy screen is on.")
+        if not phones.allow_chat(token):
+            raise HTTPException(429, "Slow down a little.")
+        text = " ".join(req.text.split())
+        if req.what == "open":
+            try:
+                said = browser_mod.open_url(text.split(" ")[0])
+            except browser_mod.BrowserError as e:
+                raise HTTPException(400, str(e)) from None
+            audit.record("phone", f"shared link opened: {text[:100]}")
+            return {"ok": True, "text": said}
+        broadcast({"type": "phone_event", "event": {"type": "add_note", "text": text[:400], "color": "cyan"}})
+        audit.record("phone", f"shared as a note: {text[:100]}")
+        return {"ok": True, "text": "Added to the board."}
 
     @app.post("/chat")
     def chat(req: PhoneChat, authorization: str | None = Header(default=None)):

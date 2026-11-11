@@ -8,6 +8,7 @@
   const DOTS = 520;
   const BANDS = 20;
   const STEPS = 12;
+  const FRAME_IDLE_MS = 1000 / 20, FRAME_ACTIVE_MS = 1000 / 40;      // redrawn 20 or 40 times a second, not on every refresh of a 90 or 120 Hz screen (battery)
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const X = new Float32Array(DOTS), Y = new Float32Array(DOTS), Z = new Float32Array(DOTS);
@@ -99,12 +100,16 @@
     frame(now) {
       requestAnimationFrame((t) => this.frame(t));
       if (document.hidden || !this.size || this.canvas.offsetParent === null) return;
+      const calm = this.state === 'idle' || this.state === 'offline' || this.state === 'ready';
+      if (now - this.last < (calm ? FRAME_IDLE_MS : FRAME_ACTIVE_MS) - 2) return;
       const dt = Math.min(0.1, (now - this.last) / 1000);
       this.last = now;
       const t = now / 1000;
       const goal = this.targets(t);
-      for (let b = 0; b < BANDS; b++) this.bands[b] += (goal[b] - this.bands[b]) * (goal[b] > this.bands[b] ? 0.6 : 0.12);
-      this.smooth += ((this.target || 0) - this.smooth) * 0.25;
+      const steps = Math.max(1, dt * 60);                                   // the smoothing was tuned for 60 frames a second
+      const rise = 1 - Math.pow(0.4, steps), fall = 1 - Math.pow(0.88, steps), follow = 1 - Math.pow(0.75, steps);
+      for (let b = 0; b < BANDS; b++) this.bands[b] += (goal[b] - this.bands[b]) * (goal[b] > this.bands[b] ? rise : fall);
+      this.smooth += ((this.target || 0) - this.smooth) * follow;
       this.yaw += (reduceMotion ? 0.04 : this.state === 'thinking' ? 1.6 : this.state === 'listening' ? 0.5 : this.state === 'idle' || this.state === 'offline' ? 0.12 : 0.28) * dt;
       this.draw(t);
     }

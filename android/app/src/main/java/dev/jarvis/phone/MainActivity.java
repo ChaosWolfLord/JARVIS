@@ -97,6 +97,23 @@ public class MainActivity extends Activity {
         if (prefs.getBoolean("alerts", false) && !prefs.getString("token", "").isEmpty()) AlertService.start(this);
         Reminders.scheduleAll(this);                    // alarms are set again every time the app opens (cheap, and heals anything lost)
         checkForUpdate(false);
+        takeShared(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        takeShared(intent);
+    }
+
+    /** Something was shared to JARVIS from another app's Share menu: read it, then tell the page (which asks what to do with it). */
+    private void takeShared(Intent intent) {
+        if (!Share.isShare(intent)) return;
+        Share.read(this, intent, () -> runOnUiThread(() -> {
+            if (trustedPage && pageDone) web.evaluateJavascript("window.__shareReady&&window.__shareReady()", null);   // otherwise the page asks when it starts
+        }));
+        setIntent(new Intent(this, MainActivity.class));         // so it is not read again if the screen is rebuilt
     }
 
     private FrameLayout root;
@@ -184,7 +201,7 @@ public class MainActivity extends Activity {
         if (!asked && (!prefs.getBoolean("updates", true) || now - prefs.getLong("update_checked", 0) < Updates.EVERY)) return;
         network.execute(() -> {
             try {
-                final Updates.Found found = Updates.check(installedVersion());
+                final Updates.Found found = Updates.check(MainActivity.this, installedVersion());
                 prefs.edit().putLong("update_checked", System.currentTimeMillis()).apply();
                 ui.post(() -> {
                     if (isFinishing()) return;
@@ -655,6 +672,19 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void heard(String id) {
             if (ok() && id != null) Reminders.heard(MainActivity.this, id);
+        }
+
+        /** What was shared to JARVIS from another app: {kind: "text", text} or {kind: "image"} once, or "" when nothing is waiting. */
+        @JavascriptInterface
+        public String takeShare() { return ok() ? Share.take() : ""; }
+
+        /** The shared picture, shrunk to at most 1920 px and saved as a JPEG, as base64. */
+        @JavascriptInterface
+        public String sharedImage() { return ok() ? Share.imageBase64(MainActivity.this) : ""; }
+
+        @JavascriptInterface
+        public void discardShare() {
+            if (ok()) Share.discard(MainActivity.this);
         }
 
         /** Do reminders ring like a call (the call screen, Answer/Decline)? It never overrides silent mode or Do Not Disturb. */

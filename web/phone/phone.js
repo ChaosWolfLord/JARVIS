@@ -164,6 +164,7 @@ function start() {
   }
   showUpdates();
   syncReminders();
+  checkShare();
   if (app && typeof Brain !== 'undefined') Brain.sync((path, body) => api(path, { method: 'POST', body: JSON.stringify(body) }).then((r) => (r.ok ? r.json() : null)).catch(() => null));
 }
 
@@ -645,7 +646,74 @@ function startLocal() {
   keepAwake();
   renderReminders();
   watchForPc();
+  checkShare();
 }
+
+// ---- share to JARVIS (app only) ---------------------------------------------------------------------------------------
+// Another app's Share menu hands the app some text, a link or a picture. Nothing happens by itself: this sheet asks what to do with it.
+let shared = null;
+const URL_ONLY = /^https?:\/\/\S+$/i;
+
+function shareMessage(text) { $('share-msg').textContent = text || ''; }
+
+function closeShare() {
+  $('share').hidden = true;
+  $('share-img').removeAttribute('src');
+  if (shared?.kind === 'image') app?.discardShare?.();
+  shared = null;
+}
+
+function checkShare() {
+  if (!app || typeof app.takeShare !== 'function' || $('chat').hidden || shared) return;
+  let item = null;
+  try { item = JSON.parse(app.takeShare() || 'null'); } catch { item = null; }
+  if (!item) return;
+  shared = item;
+  const image = item.kind === 'image';
+  const url = !image && URL_ONLY.test(String(item.text || '').trim());
+  $('share-img').hidden = !image;
+  if (image) $('share-img').src = `data:image/jpeg;base64,${app.sharedImage()}`;
+  $('share-text').textContent = image ? '' : String(item.text || '');
+  $('share-ask').hidden = image;
+  $('share-wall').hidden = !image || LOCAL;
+  $('share-note').hidden = image || LOCAL;
+  $('share-open').hidden = !url || LOCAL;
+  shareMessage(LOCAL ? 'Your PC isn’t reachable, so the wall isn’t available. I can still answer about it.' : '');
+  if (image && LOCAL) shareMessage('Your PC isn’t reachable, so I can’t put a picture on the wall right now.');
+  $('share').hidden = false;
+}
+
+async function shareToPc(what) {
+  if (!shared) return;
+  shareMessage('Sending…');
+  try {
+    let res;
+    if (shared.kind === 'image') {
+      const raw = atob(app.sharedImage());
+      const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+      res = await fetch('/picture?title=From%20your%20phone', { method: 'POST', headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${token}` }, body: bytes });
+    } else {
+      res = await api('/share', { method: 'POST', body: JSON.stringify({ what, text: String(shared.text || '').slice(0, 2000) }) });
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { shareMessage(data.detail || `The PC said no (${res.status}).`); return; }
+    add('did', shared.kind === 'image' ? 'Picture sent to the wall' : what === 'open' ? 'Opened on the PC' : 'Added to the board');
+    closeShare();
+  } catch {
+    shareMessage('Could not reach your PC.');
+  }
+}
+
+$('share-wall').addEventListener('click', () => shareToPc('wall'));
+$('share-note').addEventListener('click', () => shareToPc('note'));
+$('share-open').addEventListener('click', () => shareToPc('open'));
+$('share-cancel').addEventListener('click', closeShare);
+$('share-ask').addEventListener('click', () => {
+  const text = String(shared?.text || '').trim();
+  closeShare();
+  if (text) send(URL_ONLY.test(text) ? `Look at this page and tell me what it is about: ${text}` : `About this: ${text}`);
+});
+window.__shareReady = () => checkShare();                   // the app has something shared with it
 
 // ---- go ------------------------------------------------------------------------------------------------------------
 if (LOCAL) startLocal(); else if (token) start(); else show('pair');

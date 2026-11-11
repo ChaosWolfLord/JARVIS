@@ -179,6 +179,7 @@ export class Chat {
     } else if (ev.type === 'board_edit') this.board.applyEdit(ev);
     else if (ev.type === 'widget') this.onWidget?.(ev);
     else if (ev.type === 'holo') this.onHolo?.(ev);
+    else if (ev.type === 'picture') this.onPicture?.(ev);
     else if (ev.type === 'timer') this.onTimer?.(ev);
   }
 
@@ -251,6 +252,9 @@ export class Chat {
         } else if (ev.type === 'holo') {
           this.onHolo?.(ev);
           this.chip(reply, `Showing: ${ev.title}`);
+        } else if (ev.type === 'picture') {
+          this.onPicture?.(ev);
+          this.chip(reply, `Picture on the wall: ${ev.title}`);
         } else if (ev.type === 'timer') {
           this.onTimer?.(ev);
           this.chip(reply, ev.action === 'start' ? `Timer started: ${ev.label || `${Math.round(ev.seconds / 60)} min`}` : 'Timer cancelled');
