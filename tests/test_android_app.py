@@ -25,7 +25,7 @@ class Permissions(unittest.TestCase):
         asked = sorted(re.findall(r'uses-permission android:name="android\.permission\.(\w+)"', MANIFEST))
         self.assertEqual(asked, sorted(["INTERNET", "RECORD_AUDIO", "POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "USE_EXACT_ALARM", "SCHEDULE_EXACT_ALARM",
                                         "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC", "USE_FULL_SCREEN_INTENT", "VIBRATE",
-                                        "FOREGROUND_SERVICE_MEDIA_PLAYBACK", "SYSTEM_ALERT_WINDOW"]))
+                                        "FOREGROUND_SERVICE_MEDIA_PLAYBACK", "SYSTEM_ALERT_WINDOW", "MODIFY_AUDIO_SETTINGS"]))
 
     def test_only_the_boot_receiver_can_be_reached_from_outside(self):
         self.assertRegex(MANIFEST, r'<receiver android:name="\.AlarmReceiver" android:exported="false"')
@@ -54,9 +54,31 @@ class ReminderCalls(unittest.TestCase):
 
     def test_nothing_bypasses_silent_mode_or_do_not_disturb(self):
         for banned in ("setBypassDnd", "USAGE_ALARM", "STREAM_ALARM", "STREAM_RING", "setStreamVolume", "setRingerMode", "setInterruptionFilter",
-                       "ACCESS_NOTIFICATION_POLICY", "MODIFY_AUDIO_SETTINGS", "setStreamMute", "adjustVolume", "setSpeakerphoneOn"):
+                       "ACCESS_NOTIFICATION_POLICY", "setStreamMute", "adjustVolume", "adjustStreamVolume", "setMicrophoneMute"):
             self.assertNotIn(banned, self.all, banned)
         self.assertNotIn("ACCESS_NOTIFICATION_POLICY", MANIFEST)
+
+    def test_an_answered_call_has_a_speaker_button_and_gives_the_audio_back(self):
+        call = self.sources["CallActivity.java"]
+        for name in ("setMode(AudioManager.MODE_IN_COMMUNICATION)", "setCommunicationDevice(", "setSpeakerphoneOn(", "clearCommunicationDevice()", "setMode(oldMode)"):
+            self.assertIn(name, call, name)
+        self.assertIn("USAGE_VOICE_COMMUNICATION", call)
+        self.assertIn("speakerBtn.setOnClickListener", call)
+        for other in ("CallService.java", "Notify.java", "Reminders.java", "AlarmReceiver.java"):                 # the ringing side never touches call audio
+            for name in ("setMode(", "setCommunicationDevice", "setSpeakerphoneOn"):
+                self.assertNotIn(name, self.sources[other], f"{other}: {name}")
+        self.assertIn("RINGER_MODE_NORMAL", call)                          # the first time: the speaker only when the ringer is on
+        self.assertIn("endCallAudio();", call[call.index("private void hangUp()"):call.index("protected void onDestroy()")])
+        self.assertIn("endCallAudio();", call[call.index("protected void onDestroy()"):])
+
+    def test_the_call_screen_shows_jarvis_s_orb_and_it_follows_the_call(self):
+        call, orb = self.sources["CallActivity.java"], self.sources["OrbView.java"]
+        self.assertIn("new OrbView(this)", call)
+        for state in ("SPEAKING", "LISTENING", "THINKING", "IDLE"):
+            self.assertIn(f"OrbView.{state}", call)
+        self.assertIn("orb.hear(", call)                                    # it moves with your voice while it listens
+        self.assertIn("postInvalidateDelayed(", orb)                        # a frame rate cap, not every screen refresh
+        self.assertNotIn("new android.graphics.RadialGradient", orb[orb.index("long gap"):orb.index("if (glowFor != s)")])
 
     def test_the_ringtone_only_plays_when_the_phone_allows_a_call_to_ring(self):
         service, notify = self.sources["CallService.java"], self.sources["Notify.java"]

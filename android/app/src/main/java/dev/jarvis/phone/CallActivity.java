@@ -3,10 +3,15 @@ package dev.jarvis.phone;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -45,7 +50,11 @@ public class CallActivity extends Activity {
     private final ArrayList<String[]> talk = new ArrayList<>();     // {role, text} of this call, for the AI
     private int quiet = 0;                                          // replies in a row that were not heard
     private TextView title, line, hint;
-    private Button answerBtn, declineBtn, snoozeBtn;
+    private Button answerBtn, declineBtn, snoozeBtn, speakerBtn;
+    private OrbView orb;
+    private AudioManager audio;
+    private int oldMode = AudioManager.MODE_NORMAL;
+    private boolean audioOn = false, speakerOn = false;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -76,27 +85,31 @@ public class CallActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setBackgroundColor(0xFF080A10);
         int pad = dp(28);
-        root.setPadding(pad, dp(72), pad, dp(48));
+        root.setPadding(pad, dp(56), pad, dp(40));
 
         TextView name = label("JARVIS", 38, 0xFFEAF2FF, true);
         title = label("is calling…", 18, 0xFF8FA3C4, false);
         line = label("", 20, 0xFFEAF2FF, false);
         line.setGravity(Gravity.CENTER);
-        line.setPadding(0, dp(36), 0, 0);
+        line.setPadding(0, dp(8), 0, 0);
         hint = label("", 14, 0xFF8FA3C4, false);
         hint.setPadding(0, dp(20), 0, 0);
         hint.setGravity(Gravity.CENTER);
 
-        View gap = new View(this);
+        orb = new OrbView(this);
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.CENTER);
+        speakerBtn = round("Speaker", 0xFF1B2433);
+        speakerBtn.setVisibility(View.GONE);
+        speakerBtn.setOnClickListener((v) -> setSpeaker(!speakerOn, true));
         declineBtn = round("Decline", 0xFFD64545);
         answerBtn = round("Answer", 0xFF2FA866);
         declineBtn.setOnClickListener((v) -> hangUp());
         answerBtn.setOnClickListener((v) -> answer());
         LinearLayout.LayoutParams each = new LinearLayout.LayoutParams(dp(112), dp(112));
-        each.setMargins(dp(28), 0, dp(28), 0);
+        each.setMargins(dp(20), 0, dp(20), 0);
+        buttons.addView(speakerBtn, each);
         buttons.addView(declineBtn, each);
         buttons.addView(answerBtn, each);
 
@@ -110,11 +123,11 @@ public class CallActivity extends Activity {
 
         root.addView(name);
         root.addView(title);
+        root.addView(orb, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));      // the middle of the screen
         root.addView(line);
         root.addView(hint);
-        root.addView(gap, new LinearLayout.LayoutParams(1, 0, 1f));
         LinearLayout.LayoutParams wide = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
-        wide.setMargins(0, 0, 0, dp(18));
+        wide.setMargins(0, dp(14), 0, dp(16));
         root.addView(snoozeBtn, wide);
         root.addView(buttons);
         setContentView(root);
@@ -159,10 +172,13 @@ public class CallActivity extends Activity {
         answerBtn.setVisibility(View.GONE);
         declineBtn.setText("Hang up");
         snoozeBtn.setVisibility(View.VISIBLE);
+        speakerBtn.setVisibility(View.VISIBLE);
+        startCallAudio();
         tts = new TextToSpeech(this, (status) -> {
             ttsReady = status == TextToSpeech.SUCCESS;
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
+                tts.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());   // heard as a call: the earpiece or the speaker
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String utteranceId) { }
                     @Override public void onError(String utteranceId) { ui.post(() -> doneSpeaking()); }
@@ -178,6 +194,7 @@ public class CallActivity extends Activity {
     private void speak(String s) {
         if (!ttsReady || ended) return;
         wantsToSpeak = true;
+        orb.setState(OrbView.SPEAKING);
         hint.setText("JARVIS is speaking…");
         tts.speak(s, TextToSpeech.QUEUE_FLUSH, null, "jarvis-call");
     }
@@ -185,6 +202,7 @@ public class CallActivity extends Activity {
     private void doneSpeaking() {
         if (ended) return;
         wantsToSpeak = false;
+        orb.setState(OrbView.IDLE);
         if (goodbye) { hangUp(); return; }
         listen();
     }
@@ -200,9 +218,9 @@ public class CallActivity extends Activity {
         if (recognizer == null) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this);
             recognizer.setRecognitionListener(new RecognitionListener() {
-                @Override public void onReadyForSpeech(Bundle b) { hint.setText("Listening…"); }
+                @Override public void onReadyForSpeech(Bundle b) { hint.setText("Listening…"); orb.setState(OrbView.LISTENING); }
                 @Override public void onBeginningOfSpeech() { }
-                @Override public void onRmsChanged(float v) { }
+                @Override public void onRmsChanged(float v) { orb.hear((v + 2f) / 12f); }          // the orb moves with your voice
                 @Override public void onBufferReceived(byte[] b) { }
                 @Override public void onEndOfSpeech() { }
                 @Override public void onPartialResults(Bundle b) { }
@@ -210,7 +228,7 @@ public class CallActivity extends Activity {
                 @Override public void onError(int error) {
                     if (ended) return;
                     quiet++;
-                    if (quiet >= 2) { hint.setText("Tap a button to reply."); return; }
+                    if (quiet >= 2) { hint.setText("Tap a button to reply."); orb.setState(OrbView.IDLE); return; }
                     ui.postDelayed(CallActivity.this::listen, 400);
                 }
                 @Override public void onResults(Bundle b) {
@@ -266,6 +284,7 @@ public class CallActivity extends Activity {
         if (isSnooze(s)) { int min = minutesIn(s); snoozeThenBye(min); return; }
         if (isThanks(s) && s.split("\\s+").length <= 6) { goodbye = true; speak("You're welcome. Goodbye."); return; }
         talk.add(new String[]{"user", said});
+        orb.setState(OrbView.THINKING);
         hint.setText("Thinking…");
         new Thread(() -> {
             String reply = ask();
@@ -314,9 +333,60 @@ public class CallActivity extends Activity {
         snoozeThenBye(minutes);
     }
 
+    // ---- where the voice comes out ---------------------------------------------------------------------------------------------
+    /**
+     * Once answered, JARVIS's voice is a call: it comes out of the speaker or the earpiece, as the Speaker button says, and the volume keys
+     * change the call volume. The first time, the speaker is used when the phone's ringer is on and the earpiece when it is on vibrate or silent
+     * (so a call answered in a quiet room does not suddenly speak out loud); after you press the button it remembers what you chose.
+     * Nothing here changes a volume, the ringer or Do Not Disturb, and the phone's audio mode is put back when the call ends.
+     */
+    private void startCallAudio() {
+        if (audioOn) return;
+        audio = getSystemService(AudioManager.class);
+        SharedPreferences p = getSharedPreferences("jarvis", MODE_PRIVATE);
+        speakerOn = p.contains("call_speaker") ? p.getBoolean("call_speaker", true) : audio.getRingerMode() == AudioManager.RINGER_MODE_NORMAL;
+        oldMode = audio.getMode();
+        audio.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        setVolumeControlStream(AudioManager.STREAM_VOICE_CALL);
+        audioOn = true;
+        setSpeaker(speakerOn, false);
+    }
+
+    private void setSpeaker(boolean on, boolean chosen) {
+        speakerOn = on;
+        if (chosen) getSharedPreferences("jarvis", MODE_PRIVATE).edit().putBoolean("call_speaker", on).apply();
+        speakerBtn.setBackground(rounded(on ? 0xFF3A78C9 : 0xFF1B2433, dp(56)));
+        speakerBtn.setText(on ? "Speaker on" : "Speaker");
+        if (!audioOn) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 31) {
+                AudioDeviceInfo pick = null;
+                for (AudioDeviceInfo d : audio.getAvailableCommunicationDevices()) {
+                    int type = d.getType();
+                    boolean speaker = type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+                    if (on ? speaker : (!speaker && (pick == null || type != AudioDeviceInfo.TYPE_BUILTIN_EARPIECE))) pick = d;     // off: a headset if there is one, else the earpiece
+                }
+                if (pick != null) audio.setCommunicationDevice(pick);
+            } else {
+                audio.setSpeakerphoneOn(on);
+            }
+        } catch (RuntimeException ignored) { }
+    }
+
+    private void endCallAudio() {
+        if (!audioOn) return;
+        audioOn = false;
+        try {
+            if (Build.VERSION.SDK_INT >= 31) audio.clearCommunicationDevice();
+            else audio.setSpeakerphoneOn(false);
+            audio.setMode(oldMode);
+        } catch (RuntimeException ignored) { }
+    }
+
     private void hangUp() {
         if (ended) return;
         ended = true;
+        endCallAudio();
         Notify.endCall(this, id);                       // a declined call keeps the quiet copy of the reminder in the list
         if (answered) Notify.clearReminder(this, id);
         finish();
@@ -325,6 +395,7 @@ public class CallActivity extends Activity {
     @Override
     protected void onDestroy() {
         ended = true;
+        endCallAudio();
         ui.removeCallbacksAndMessages(null);
         if (recognizer != null) { recognizer.destroy(); recognizer = null; }
         if (tts != null) { tts.stop(); tts.shutdown(); tts = null; }

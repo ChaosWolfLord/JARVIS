@@ -10,6 +10,8 @@
     <!-- the reminder call rings and buzzes only when the phone's ringer is on and Do Not Disturb is off (it never changes those settings) -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- lets an answered call choose the speaker or the earpiece for JARVIS's voice (the Speaker button); it never changes a volume or the ringer -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- optional ("display over other apps", off until you allow it in the menu): lets the call screen open at once even while you are using the phone -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- lets the reminder call open its screen over the lock screen; the phone may ask you to allow it (Android 14 and later) -->
