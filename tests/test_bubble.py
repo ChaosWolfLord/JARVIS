@@ -50,3 +50,16 @@ class TopBubble(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Readable(unittest.TestCase):
+    """The bubble must stand out from the dark board in both looks: a near-solid lighter body, a coloured edge, white words."""
+
+    def test_both_looks_give_it_a_visible_edge_a_solid_body_and_white_text(self):
+        modern = (ROOT / "web" / "modern.css").read_text("utf-8")
+        for name, css, rule in (("classic", CSS, CSS[CSS.index("#orb-bubble {"):CSS.index("#orb-bubble.open")]), ("modern", modern, modern[modern.index("& #orb-bubble {"):][:520])):
+            self.assertRegex(rule, r"border: 2px solid rgba\(var\(--accent-rgb\), 0\.\d+\)", name)
+            self.assertRegex(rule, r"rgba\([^)]*0\.98\d?\)", name)              # almost opaque, so the drawing behind never shows through the words
+            self.assertIn("#fff", rule, name)
+            self.assertNotIn("var(--line)", rule, name)                         # the old edge was 9% white: invisible
+        self.assertNotIn("var(--dim)", CSS[CSS.index("#orb-bubble .step"):][:80])  # the "Thinking…" line is bright enough to read

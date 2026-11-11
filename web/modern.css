@@ -77,10 +77,13 @@ html.modern {
     background: var(--surface); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
     border: 1px solid var(--line); color: var(--white); box-shadow: var(--shadow);
   }
+  /* the speech bubble must stand out from the dark board: a lighter, almost solid body, a clearly coloured edge with a soft glow, and pure white words */
   & #orb-bubble {
-    background: var(--surface); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
-    border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); color: var(--white);
+    background: linear-gradient(180deg, rgba(44, 55, 84, 0.985), rgba(28, 36, 58, 0.985)); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+    border: 2px solid rgba(var(--accent-rgb), 0.75); border-radius: 28px; color: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 26px rgba(var(--accent-rgb), 0.32), var(--shadow);
   }
+  & #orb-bubble .step { color: #c9d4e8; }
   & #toolbar .bubble-stop, & .bubble-stop { border-color: rgba(255, 122, 133, 0.45); background: rgba(255, 122, 133, 0.1); color: #ffc2c8; border-radius: 10px; }
   & #toolbar .bubble-stop:hover, & .bubble-stop:hover { background: rgba(255, 122, 133, 0.22); }
   & #offline-banner {
