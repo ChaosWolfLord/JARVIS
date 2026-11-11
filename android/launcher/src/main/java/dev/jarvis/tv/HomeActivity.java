@@ -407,19 +407,6 @@ public class HomeActivity extends Activity {
 
     // ---- a remote button that opens HDMI ----------------------------------------------------------------------------
 
-    /** Buttons that are needed to move around, so they can't be taken over. */
-    private static boolean reserved(int keyCode) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP: case KeyEvent.KEYCODE_DPAD_DOWN: case KeyEvent.KEYCODE_DPAD_LEFT: case KeyEvent.KEYCODE_DPAD_RIGHT:
-            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_HOME:
-            case KeyEvent.KEYCODE_MENU: case KeyEvent.KEYCODE_POWER: case KeyEvent.KEYCODE_VOLUME_UP: case KeyEvent.KEYCODE_VOLUME_DOWN:
-            case KeyEvent.KEYCODE_VOLUME_MUTE:
-                return true;
-            default:
-                return false;
-        }
-    }
-
     private boolean keyServiceOn() {
         String on = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
         return on != null && on.contains(getPackageName() + "/");
@@ -429,38 +416,44 @@ public class HomeActivity extends Activity {
         return code == KeyEvent.KEYCODE_UNKNOWN ? "button #" + scan : KeyEvent.keyCodeToString(code).replace("KEYCODE_", "");
     }
 
-    /** Lets you press the remote button that should open HDMI from anywhere (see KeyService). */
+    private SharedPreferences.OnSharedPreferenceChangeListener learned;      // closes the choose-a-button screen when the service has caught the button
+
+    /**
+     * Lets you choose the remote button that opens HDMI. The button is caught by the service, not by this screen: the projector's own
+     * buttons (Miracast, AirPlay, Source, Mouse...) are taken by the system before any app sees them, but the service is shown every
+     * press first. So the service has to be on before a button can be chosen.
+     */
     private void hdmiButtonDialog() {
+        if (!keyServiceOn()) {
+            keyServiceDialog();
+            return;
+        }
         int current = prefs.getInt(KeyService.KEY_CODE, KeyService.NONE);
-        String now = current == KeyService.NONE ? "No button is chosen yet.": "Now: " + describeKey(current, prefs.getInt(KeyService.KEY_SCAN, -1)) + ".";
+        String now = current == KeyService.NONE ? "No button is chosen yet." : "Now: " + describeKey(current, prefs.getInt(KeyService.KEY_SCAN, -1)) + ".";
         AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Remote button for HDMI")
-                .setMessage(now + "\n\nPress the remote button you want to open HDMI. The arrow keys, OK, Back, Home, Menu, Power and Volume can't be used. Press Back to cancel.")
+                .setMessage(now + "\n\nPress the remote button you want to open HDMI. It can be one of the projector's own buttons, like the Miracast one. The arrow keys, OK, Back, Home, Menu, Power and Volume can't be used. Press Back to cancel.")
                 .setNegativeButton("Clear", (d, w) -> {
                     prefs.edit().remove(KeyService.KEY_CODE).remove(KeyService.KEY_SCAN).apply();
                     Toast.makeText(this, "HDMI button cleared", Toast.LENGTH_SHORT).show();
                 })
                 .create();
-        dialog.setOnKeyListener((d, keyCode, event) -> {
-            if (reserved(keyCode)) return false;                 // normal behaviour, so the Clear button and Back still work
-            if (event.getAction() == KeyEvent.ACTION_UP) {
-                prefs.edit().putInt(KeyService.KEY_CODE, keyCode).putInt(KeyService.KEY_SCAN, event.getScanCode()).apply();
-                d.dismiss();
-                if (keyServiceOn()) {
-                    Toast.makeText(this, describeKey(keyCode, event.getScanCode()) + " now opens HDMI", Toast.LENGTH_LONG).show();
-                } else {
-                    keyServiceDialog(describeKey(keyCode, event.getScanCode()));
-                }
-            }
-            return true;
+        learned = (p, key) -> {
+            if (KeyService.KEY_CODE.equals(key)) dialog.dismiss();
+        };
+        prefs.registerOnSharedPreferenceChangeListener(learned);
+        dialog.setOnDismissListener(d -> {
+            prefs.unregisterOnSharedPreferenceChangeListener(learned);
+            prefs.edit().remove(KeyService.LEARNING_UNTIL).apply();
         });
+        prefs.edit().putLong(KeyService.LEARNING_UNTIL, System.currentTimeMillis() + 60_000).apply();      // the service takes the next button press, for up to a minute
         dialog.show();
     }
 
-    private void keyServiceDialog(String button) {
+    private void keyServiceDialog() {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle(button + " is chosen")
-                .setMessage("One more step: turn on \"JARVIS Home remote button\" in Settings, Accessibility. It is what lets the button work in every app.")
+                .setTitle("Turn on the button service first")
+                .setMessage("In Settings, Accessibility, turn on \"JARVIS Home remote button\". It is what sees the remote's buttons in every app. Then come back here and choose the button.")
                 .setPositiveButton("Open settings", (d, w) -> {
                     try {
                         startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
