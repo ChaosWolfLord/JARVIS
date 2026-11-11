@@ -112,9 +112,6 @@ html.modern #toolbar .dock-menu h3 { text-transform: none; letter-spacing: 0.4px
 #toolbar .menu-row.active, html.modern #toolbar .menu-row.active, html.modern #toolbar .menu-row.on { background: none; box-shadow: none; border-color: transparent; color: var(--text); }
 #toolbar .menu-row.active svg, #toolbar .menu-row.on svg { stroke: var(--cyan); }
 
-/* the bubble above the orb sits above the orb's top, not the bar's */
-#toolbar #orb-bubble { margin-bottom: 78px; }
-
 /* ---- the bar's own width (dockmenus.js sets data-size): the status and chat panels beside the board make it narrower than the window ---- */
 #toolbar[data-size="compact"] { --orb-col: 150px; --orb-size: 180px; padding: 0 10px; }
 html #toolbar[data-size="compact"] .dock-btn { width: 50px; font-size: 11.5px; }
@@ -145,7 +142,6 @@ body.touch #toolbar .menu-row small { font-size: 16px; }
 body.touch #toolbar #ink-menu .swatch { width: 52px; height: 52px; }
 body.touch #toolbar .ink-size { font-size: 19px; }
 body.touch #toolbar .ink-size input { height: 44px; }
-body.touch #toolbar #orb-bubble { margin-bottom: 110px; }
 body.touch #toolbar[data-size="compact"] { --orb-col: 210px; --orb-size: 250px; }
 body.touch #toolbar[data-size="compact"] .dock-btn { width: 60px; font-size: 13px; }
 body.touch #toolbar[data-size="tight"] { --orb-col: 160px; --orb-size: 190px; }

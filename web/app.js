@@ -136,7 +136,7 @@ $('btn-full').addEventListener('click', toggleFullscreen);
 function setPanel(open, remember = true) {
   document.body.classList.toggle('panel-hidden', !open);
   $('btn-panel').classList.toggle('active', open);
-  if (open) $('orb-bubble').hidden = true;
+  if (open) { const b = $('orb-bubble'); b.classList.remove('open'); b.hidden = true; document.body.classList.remove('bubble-on'); }
   if (remember) { try { localStorage.setItem('jarvis.panel', open ? '1' : '0'); } catch { /* not saved */ } }
 }
 const togglePanel = () => setPanel(document.body.classList.contains('panel-hidden'));
@@ -165,7 +165,6 @@ window.jarvis.orb = orb;
 window.jarvis.bigOrb = bigOrb;
 const orbLabel = $('orb-label');
 const bubble = $('orb-bubble');
-let bubbleTimer;
 setInterval(() => {
   const state = chat.busy ? 'thinking'
     : voice.speaking ? 'speaking'
@@ -180,26 +179,51 @@ setInterval(() => {
   if (voice.enabled) orb.startMic(); else orb.stopMic();
 }, 150);
 
-function showBubble(html, ms = 0) {
-  if (!document.body.classList.contains('panel-hidden')) return; // the open panel shows it already
-  bubble.innerHTML = html;
-  bubble.hidden = false;
+let bubbleTimer;
+let bubbleHide;
+let bubbleMs = 0;
+
+/** Slips the bubble back up and out of sight (immediately, when the chat opens or the screen locks). */
+function hideBubble(immediate = false) {
   clearTimeout(bubbleTimer);
-  if (ms) bubbleTimer = setTimeout(() => { bubble.hidden = true; }, ms);
+  clearTimeout(bubbleHide);
+  bubble.classList.remove('open');
+  document.body.classList.remove('bubble-on');
+  if (immediate) { bubble.hidden = true; return; }
+  bubbleHide = setTimeout(() => { if (!bubble.classList.contains('open')) bubble.hidden = true; }, 450);
 }
+
+/** Pops the bubble out of the top of the screen with this text (paragraphs as HTML, built with plain() from anything typed or spoken). `stop` adds the Stop button. */
+function showBubble(html, ms = 0, stop = false) {
+  if (!document.body.classList.contains('panel-hidden')) return; // the open panel shows it already
+  clearTimeout(bubbleHide);
+  clearTimeout(bubbleTimer);
+  const wasOut = bubble.classList.contains('open');
+  bubble.innerHTML = `<div class="bubble-body">${html}</div>${stop ? stopButton : ''}`;
+  bubble.hidden = false;
+  document.body.classList.add('bubble-on');
+  if (!wasOut) requestAnimationFrame(() => requestAnimationFrame(() => bubble.classList.add('open')));      // the pill pops out of the top edge
+  bubbleMs = ms;
+  if (ms) bubbleTimer = setTimeout(() => hideBubble(), ms);
+}
+// reading a long answer: it stays while the pointer is on it
+bubble.addEventListener('pointerenter', () => clearTimeout(bubbleTimer));
+bubble.addEventListener('pointerleave', () => { if (bubbleMs && bubble.classList.contains('open')) bubbleTimer = setTimeout(() => hideBubble(), 3500); });
+// a toast (a short notice) sits just under the bubble
+if (window.ResizeObserver) new ResizeObserver(() => document.body.style.setProperty('--bubble-h', `${bubble.offsetHeight + 12}px`)).observe(bubble);
 const plain = (s) => Object.assign(document.createElement('div'), { textContent: s }).innerHTML;
 const stopButton = '<button type="button" class="bubble-stop">■ Stop</button>';
-chat.onStart = (text) => showBubble(`<p class="step">“${plain(text.slice(0, 160))}”</p><p class="step">Thinking…</p>${stopButton}`);
+chat.onStart = (text) => showBubble(`<p class="step">“${plain(text.slice(0, 160))}”</p><p class="step">Thinking…</p>`, 0, true);
 chat.onProgress = (ev) => {
   const left = ev.left == null ? '' : ` · about ${ev.left} free requests left today`;
   if (ev.step > 1 || ev.left != null) bubble.querySelector('.step:last-of-type')?.replaceChildren(`Thinking · step ${ev.step} of ${ev.max}${left}`);
 };
-chat.onStatus = (text) => showBubble(`<p class="step">${plain(text)}</p>${stopButton}`);
+chat.onStatus = (text) => showBubble(`<p class="step">${plain(text)}</p>`, 0, true);
 chat.onFinal = ({ text, failed, error }) => {
   const shown = failed ? error : text;
-  if (!shown) { bubble.hidden = true; return; }
-  const body = plain(shown.length > 700 ? `${shown.slice(0, 700)}…` : shown).replace(/\n+/g, '</p><p>');
-  showBubble(`<p>${body}</p>`, Math.min(30_000, 6000 + shown.length * 45));
+  if (!shown) { hideBubble(); return; }
+  const body = plain(shown).replace(/\n+/g, '</p><p>');                              // the whole answer, however long (it scrolls inside the bubble)
+  showBubble(`<p>${body}</p>`, Math.min(60_000, 6000 + shown.length * 45));
 };
 chat.onNeedsYou = () => setPanel(true, false);
 
@@ -390,7 +414,7 @@ window.jarvis.status = status;
 const privacy = new Privacy({
   overlay: $('privacy'),
   toast,
-  onLocked: () => { showoff.stop(); voice.cancelSpeech?.(); setPanel(false, false); bubble.hidden = true; status.toggle(false); widgets.toggleMenu(false); },
+  onLocked: () => { showoff.stop(); voice.cancelSpeech?.(); setPanel(false, false); hideBubble(true); status.toggle(false); widgets.toggleMenu(false); },
   onUnlocked: () => { board.sync(); status.poll(); },
 });
 window.jarvis.privacy = privacy;

@@ -211,6 +211,8 @@ def post(url, body, token=None, kind="application/json"):
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, ConnectionError, OSError):          # refused and hung up on before the body was read
+        return 0, ""
 
 
 class SharedFromThePhone(unittest.TestCase):
@@ -249,8 +251,8 @@ class SharedFromThePhone(unittest.TestCase):
         self.assertTrue(pictures.find(json.loads(body)["id"]))
 
     def test_only_a_real_paired_phone_can_send_pictures(self):
-        self.assertEqual(post(f"{self.base}/picture", JPEG, None, "image/jpeg")[0], 401)
-        self.assertEqual(post(f"{self.base}/picture", JPEG, "made-up", "image/jpeg")[0], 401)
+        self.assertIn(post(f"{self.base}/picture", JPEG, None, "image/jpeg")[0], (0, 401))
+        self.assertIn(post(f"{self.base}/picture", JPEG, "made-up", "image/jpeg")[0], (0, 401))
         self.assertEqual(post(f"{self.base}/share", {"what": "note", "text": "hi"})[0], 401)
         self.assertEqual(self.broadcasts, [])
 

@@ -398,18 +398,30 @@ body.touch #widget-list b { font-size: 20px; }
 #toolbar #orb:hover, #toolbar #orb:focus-visible { background: none; outline: none; }
 #orb-canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
 body.touch #toolbar #orb { width: clamp(140px, 20vh, 190px); height: clamp(140px, 20vh, 190px); }
+/* JARVIS's speech bubble: a small pill that pops out of the top edge of the screen. It starts as "Thinking… ■ Stop" and grows to show whatever JARVIS
+   says (steps, answers of any length, alerts, finished timers), then slips back up. It is a sibling of the caption, over the board. */
 #orb-bubble {
-  position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); margin-bottom: 14px;
-  width: max-content; max-width: min(640px, 92vw); max-height: 40vh; overflow-y: auto; z-index: 19;
-  padding: 12px 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(4, 16, 28, 0.92);
+  position: absolute; left: 50%; top: 12px; z-index: 55;
+  display: flex; align-items: center; gap: 14px;
+  width: max-content; min-width: 170px; max-width: min(760px, 92%); max-height: 64vh;
+  padding: 10px 12px 10px 20px; border: 1px solid var(--line); border-radius: 28px; background: rgba(4, 16, 28, 0.94);
   color: var(--text); font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; cursor: pointer;
   box-shadow: 0 0 24px rgba(0, 150, 255, 0.2);
+  opacity: 0; transform: translate(-50%, -130%) scale(0.55); transform-origin: 50% 0;
+  transition: transform 0.4s cubic-bezier(0.2, 1.3, 0.4, 1), opacity 0.2s ease;
 }
+#orb-bubble.open { opacity: 1; transform: translate(-50%, 0) scale(1); }
 #orb-bubble[hidden], body:not(.panel-hidden) #orb-bubble { display: none; }
+#orb-bubble .bubble-body { min-width: 0; flex: 1; max-height: calc(64vh - 22px); overflow-y: auto; padding-right: 6px; }
 #orb-bubble .step { color: var(--dim); font-style: italic; }
 #orb-bubble p { margin: 0 0 6px; }
 #orb-bubble p:last-child { margin: 0; }
-body.touch #orb-bubble { font-size: 26px; padding: 16px 24px; }
+#orb-bubble .bubble-stop { flex: none; margin: 0; }
+body.touch #orb-bubble { font-size: 26px; padding: 14px 16px 14px 26px; }
+@media (prefers-reduced-motion: reduce) { #orb-bubble { transition: opacity 0.2s ease; transform: translate(-50%, 0); } }
+/* while the bubble is out, what it says is not also shown as a caption, and a toast waits underneath it */
+body.bubble-on #caption { opacity: 0 !important; }
+body.bubble-on #toast { top: calc(var(--bubble-h, 0px) + 26px); }
 #panel header { display: flex; align-items: center; gap: 12px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
 #panel h1 { margin: 0; font-size: 18px; letter-spacing: 5px; font-weight: 400; color: var(--cyan); text-shadow: 0 0 10px rgba(var(--accent-rgb), 0.6); }
 #spend { margin: 2px 0 0; font-size: 12px; color: var(--dim); }
