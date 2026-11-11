@@ -64,11 +64,13 @@ public class HomeActivity extends Activity {
     private static final class App {
         String pkg;
         String label;
-        Drawable icon;
+        ResolveInfo info;        // the icon is only loaded (and shrunk to the tile's size) for apps that are actually shown
+        Drawable icon;           // only the JARVIS placeholder has one ready
         boolean system;
         boolean installed = true;
     }
 
+    private String lastFocus;    // which app was selected when the screen was released, so it can be selected again
     private SharedPreferences prefs;
     private float density;
     private LinearLayout pinnedRow;
@@ -188,7 +190,7 @@ public class HomeActivity extends Activity {
                 app.pkg = pkg;
                 String custom = NAMES.get(pkg);
                 app.label = custom != null ? custom : String.valueOf(info.loadLabel(pm));
-                app.icon = info.loadIcon(pm);
+                app.info = info;
                 app.system = (info.activityInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
                 found.put(pkg, app);
             }
@@ -217,7 +219,8 @@ public class HomeActivity extends Activity {
     }
 
     private void refresh() {
-        String focused = getCurrentFocus() instanceof Tile ? ((Tile) getCurrentFocus()).key : null;
+        String focused = getCurrentFocus() instanceof Tile ? ((Tile) getCurrentFocus()).key : lastFocus;
+        lastFocus = null;
         everyApp = queryApps();
         Map<String, App> byPkg = new LinkedHashMap<>();
         for (App a : everyApp) byPkg.put(a.pkg, a);
@@ -257,8 +260,19 @@ public class HomeActivity extends Activity {
         if (target != null) target.post(target::requestFocus);
     }
 
+    /** An app's icon drawn once into a bitmap exactly as big as it is shown (apps' own icons can be 512 pixels wide: about 1 MB each). */
+    private Drawable smallIcon(App app, int sizeDp) {
+        if (app.icon != null) return app.icon;
+        int px = dp(sizeDp);
+        Drawable full = app.info.loadIcon(getPackageManager());
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
+        full.setBounds(0, 0, px, px);
+        full.draw(new android.graphics.Canvas(bitmap));
+        return new android.graphics.drawable.BitmapDrawable(getResources(), bitmap);
+    }
+
     private Tile tile(App app, int w, int h, int icon) {
-        Tile tile = new Tile(this, app.pkg, app.label, app.icon, w, h, icon, density);
+        Tile tile = new Tile(this, app.pkg, app.label, smallIcon(app, icon), w, h, icon, density);
         tile.setOnClickListener(v -> open(app));
         tile.setOnLongClickListener(v -> {
             options(app);
@@ -414,6 +428,7 @@ public class HomeActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (intent.hasCategory(Intent.CATEGORY_HOME)) {              // Home pressed again: back to the top, first app selected
+            lastFocus = null;
             scroll.smoothScrollTo(0, 0);
             if (pinnedRow.getChildCount() > 0) pinnedRow.getChildAt(0).requestFocus();
         }
@@ -441,6 +456,17 @@ public class HomeActivity extends Activity {
     protected void onStop() {
         super.onStop();
         unregisterReceiver(packagesChanged);
+        release();
+    }
+
+    /** The projector has about 1 GB of memory, so while another app is in front this screen keeps nothing: no tiles, no icons, no app list.
+     *  It is rebuilt (a few milliseconds) when you come back. */
+    private void release() {
+        if (getCurrentFocus() instanceof Tile) lastFocus = ((Tile) getCurrentFocus()).key;
+        pinnedRow.removeAllViews();
+        grid.removeAllViews();
+        everyApp = new ArrayList<>();
+        System.gc();
     }
 
     private int dp(float v) {

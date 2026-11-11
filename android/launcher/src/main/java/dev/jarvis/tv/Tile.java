@@ -59,6 +59,6 @@ final class Tile extends LinearLayout {
         background.addState(new int[]{}, idle);
         setBackground(background);
 
-        setOnFocusChangeListener((v, hasFocus) -> v.animate().scaleX(hasFocus ? 1.08f : 1f).scaleY(hasFocus ? 1.08f : 1f).translationZ(hasFocus ? 12 * density : 0).setDuration(120).start());
+        setOnFocusChangeListener((v, hasFocus) -> v.animate().scaleX(hasFocus ? 1.08f : 1f).scaleY(hasFocus ? 1.08f : 1f).setDuration(120).start());
     }
 }
