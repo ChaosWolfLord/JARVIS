@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "JARVIS"
 include(":app")
+include(":launcher")     // JARVIS Home: the projector's home screen (see build_launcher.bat)

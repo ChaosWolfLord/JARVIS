@@ -21,7 +21,7 @@ if /i "%~1"=="debug" (
   set "KIND=Debug"
   set "OUT=debug\app-debug.apk"
 )
-call "%~dp0gradlew.bat" --no-daemon "-Dorg.gradle.projectcachedir=%LOCALAPPDATA%\jarvis-android\project-cache" assemble%KIND%
+call "%~dp0gradlew.bat" --no-daemon "-Dorg.gradle.projectcachedir=%LOCALAPPDATA%\jarvis-android\project-cache" :app:assemble%KIND%
 if errorlevel 1 exit /b 1
 if not exist "%LOCALAPPDATA%\jarvis\app" mkdir "%LOCALAPPDATA%\jarvis\app"
 copy /y "%LOCALAPPDATA%\jarvis-android\build\app\outputs\apk\%OUT%" "%LOCALAPPDATA%\jarvis\app\jarvis.apk" >nul
