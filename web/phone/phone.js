@@ -161,6 +161,7 @@ function start() {
     $('bg-row').hidden = false;
     $('opt-bg').checked = app.backgroundAlerts();
     showCalls();
+    showFind();
   }
   showUpdates();
   syncReminders();
@@ -411,6 +412,11 @@ function chime() {
 
 const shownAlerts = new Set();
 function alertUser(ev) {
+  if (ev.type === 'find_stop') { app?.stopFinding?.(); return; }
+  if (ev.type === 'find') {                              // "find my phone" on the PC: the app rings it (see FindService); a browser can only show it
+    if (app?.startFinding) { app.startFinding(); add('alert', 'Your PC is looking for this phone.'); return; }
+    ev = { title: 'Your PC is looking for this phone', text: '' };
+  }
   if (ev.rid) {
     if (shownAlerts.has(ev.rid)) return;                  // the PC's push and this phone's own alarm are the same reminder
     shownAlerts.add(ev.rid);
@@ -564,12 +570,20 @@ $('rem-form').addEventListener('submit', async (e) => {
   renderReminders();
 });
 $('opt-bg').addEventListener('change', (e) => { app?.setBackgroundAlerts(e.target.checked); });
+$('opt-find').addEventListener('change', (e) => { app?.setFindLoud?.(e.target.checked); });
 $('opt-call').addEventListener('change', (e) => { app?.setCallsOn(e.target.checked); showCalls(); });
 $('call-allow').addEventListener('click', () => app?.allowCallScreen());
 $('call-overlay').addEventListener('click', () => app?.allowOverlay());
 document.addEventListener('visibilitychange', () => { if (!document.hidden) showCalls(); });      // back from the phone's page where the call screen is allowed
 
 // "JARVIS calls you" (Android app): reminders ring like a call. The switch lives on the phone; the extra button shows only when the phone is holding back the lock-screen call screen.
+// "Find my phone" can be allowed to ring on silent (off unless switched on here).
+function showFind() {
+  if (!app || typeof app.findLoud !== 'function') return;
+  $('find-row').hidden = false;
+  $('opt-find').checked = app.findLoud();
+}
+
 function showCalls() {
   if (!app || typeof app.callsOn !== 'function') return;
   $('call-row').hidden = false;
@@ -638,6 +652,7 @@ function startLocal() {
   $('bg-row').hidden = false;
   $('opt-bg').checked = app.backgroundAlerts();
   showCalls();
+  showFind();
   showUpdates();
   if (!$('log').childElementCount) {
     add('note', Brain.keyCount() ? 'Your PC isn’t reachable, so I’m running on the phone: chat, web search, weather, reminders and timers, and what I remember about you. Lights, music and the board need the PC.' : 'No AI keys on this phone yet. Connect to the PC once and copy them (menu, AI keys), then I can answer without it.');
@@ -648,6 +663,116 @@ function startLocal() {
   watchForPc();
   checkShare();
 }
+
+// ---- the remote: touchpad, slide keys and media keys for the PC ------------------------------------------------------------
+// Works only while the PC has switched the remote on (status menu, Phone) and only sends a short fixed list of commands; see server/remote.py.
+let remoteTimer = null;
+const acc = { dx: 0, dy: 0, scroll: 0 };           // finger movement not sent yet
+let sending = false;
+let gesture = null;                                // the finger or fingers on the touchpad right now
+
+function remoteMessage(text, kind) {
+  const el = $('remote-state');
+  el.textContent = text;
+  el.className = kind || '';
+}
+
+async function remoteStatus() {
+  try {
+    const res = await api('/remote/status');
+    if (res.status === 401) { unpair('This phone was forgotten on the PC. Pair it again.'); return; }
+    const d = await res.json();
+    if (d.armed) remoteMessage(`The remote is on (${Math.max(1, Math.round(d.seconds_left / 60))} min left).`, 'on');
+    else remoteMessage('The remote is off. On the PC open the status menu, Phone, and press “Let my phone be a remote”.', 'off');
+  } catch {
+    remoteMessage('Can’t reach your PC.', 'off');
+  }
+}
+
+async function remoteSend(body) {
+  try {
+    const res = await api('/remote', { method: 'POST', body: JSON.stringify(body) });
+    if (res.status === 403) { remoteStatus(); return false; }
+    if (res.status === 401) { unpair('This phone was forgotten on the PC. Pair it again.'); return false; }
+    return res.ok;
+  } catch {
+    remoteMessage('Can’t reach your PC.', 'off');
+    return false;
+  }
+}
+
+function openRemote() {
+  $('menu').hidden = true;
+  $('remote').hidden = false;
+  remoteStatus();
+  clearInterval(remoteTimer);
+  remoteTimer = setInterval(remoteStatus, 5000);
+  app?.keepScreenOn?.(true);                       // the screen stays on while the remote is open
+}
+
+function closeRemote() {
+  $('remote').hidden = true;
+  clearInterval(remoteTimer);
+  gesture = null;
+  keepAwake();
+}
+
+/** Sends what the fingers have moved, at most one request at a time (about 30 a second). */
+function flushRemote() {
+  if (sending) return;
+  const dx = Math.round(acc.dx), dy = Math.round(acc.dy), notches = Math.trunc(acc.scroll);
+  if (!dx && !dy && !notches) return;
+  acc.dx -= dx; acc.dy -= dy; acc.scroll -= notches;
+  sending = true;
+  const jobs = [];
+  if (dx || dy) jobs.push(remoteSend({ do: 'move', dx, dy }));
+  if (notches) jobs.push(remoteSend({ do: 'scroll', dy: notches }));
+  Promise.all(jobs).finally(() => { sending = false; });
+}
+
+const centre = (touches) => ({ x: [...touches].reduce((a, t) => a + t.clientX, 0) / touches.length, y: [...touches].reduce((a, t) => a + t.clientY, 0) / touches.length });
+
+$('pad').addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const c = centre(e.touches);
+  if (!gesture) gesture = { fingers: 0, moved: 0, at: Date.now() };
+  gesture.fingers = Math.max(gesture.fingers, e.touches.length);
+  gesture.x = c.x;
+  gesture.y = c.y;
+  $('pad').classList.add('live');
+}, { passive: false });
+
+$('pad').addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!gesture) return;
+  const c = centre(e.touches);
+  const dx = c.x - gesture.x, dy = c.y - gesture.y;
+  gesture.x = c.x;
+  gesture.y = c.y;
+  gesture.moved += Math.abs(dx) + Math.abs(dy);
+  if (e.touches.length === 1) { acc.dx += dx * 1.8; acc.dy += dy * 1.8; }          // one finger moves the pointer
+  else acc.scroll += dy / 22;                                                       // two fingers scroll (the page follows the fingers)
+}, { passive: false });
+
+$('pad').addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (e.touches.length) return;
+  $('pad').classList.remove('live');
+  if (gesture && gesture.moved < 10 && Date.now() - gesture.at < 350) remoteSend({ do: 'click', button: gesture.fingers >= 2 ? 'right' : 'left' });     // a tap is a click
+  gesture = null;
+}, { passive: false });
+$('pad').addEventListener('touchcancel', () => { gesture = null; $('pad').classList.remove('live'); });
+
+$('remote').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.key) remoteSend({ do: 'key', key: b.dataset.key });
+  else if (b.dataset.media) remoteSend({ do: 'media', key: b.dataset.media });
+  else if (b.dataset.click) remoteSend({ do: 'click', button: b.dataset.click });
+});
+setInterval(() => { if (!$('remote').hidden) flushRemote(); }, 33);
+$('open-remote').addEventListener('click', openRemote);
+$('remote-close').addEventListener('click', closeRemote);
 
 // ---- share to JARVIS (app only) ---------------------------------------------------------------------------------------
 // Another app's Share menu hands the app some text, a link or a picture. Nothing happens by itself: this sheet asks what to do with it.

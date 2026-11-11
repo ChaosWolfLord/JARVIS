@@ -53,9 +53,13 @@ class ReminderCalls(unittest.TestCase):
         cls.all = chr(10).join(cls.sources.values())
 
     def test_nothing_bypasses_silent_mode_or_do_not_disturb(self):
-        for banned in ("setBypassDnd", "USAGE_ALARM", "STREAM_ALARM", "STREAM_RING", "setStreamVolume", "setRingerMode", "setInterruptionFilter",
-                       "ACCESS_NOTIFICATION_POLICY", "setStreamMute", "adjustVolume", "adjustStreamVolume", "setMicrophoneMute"):
+        for banned in ("setBypassDnd", "STREAM_RING", "setRingerMode", "setInterruptionFilter", "ACCESS_NOTIFICATION_POLICY", "setStreamMute", "adjustVolume",
+                       "adjustStreamVolume", "setMicrophoneMute"):
             self.assertNotIn(banned, self.all, banned)
+        for name, source in self.sources.items():                         # the alarm sound and a raised volume belong to "find my phone" alone, behind its own switch
+            if name != "FindService.java":
+                for banned in ("USAGE_ALARM", "STREAM_ALARM", "setStreamVolume"):
+                    self.assertNotIn(banned, source, f"{name}: {banned}")
         self.assertNotIn("ACCESS_NOTIFICATION_POLICY", MANIFEST)
 
     def test_an_answered_call_has_a_speaker_button_and_gives_the_audio_back(self):
@@ -79,6 +83,24 @@ class ReminderCalls(unittest.TestCase):
         self.assertIn("orb.hear(", call)                                    # it moves with your voice while it listens
         self.assertIn("postInvalidateDelayed(", orb)                        # a frame rate cap, not every screen refresh
         self.assertNotIn("new android.graphics.RadialGradient", orb[orb.index("long gap"):orb.index("if (glowFor != s)")])
+
+    def test_find_my_phone_follows_silent_mode_unless_its_own_switch_is_on(self):
+        find = self.sources["FindService.java"]
+        self.assertIn('getBoolean("find_loud", false)', find)               # off unless the person turns it on
+        ring = find[find.index("private void ring(boolean loud)"):find.index("private void play(")]
+        loud_branch, quiet_branch = ring[ring.index("if (loud) {"):ring.index("} else {")], ring[ring.index("} else {"):]
+        self.assertIn("USAGE_ALARM", loud_branch)
+        self.assertIn("setStreamVolume", loud_branch)
+        for name in ("USAGE_ALARM", "setStreamVolume"):
+            self.assertNotIn(name, quiet_branch)
+        self.assertIn("CallService.mayRing(this)", quiet_branch)           # the same check as a reminder call
+        self.assertIn("CallService.mayBuzz(this)", quiet_branch)
+        self.assertIn("alarmVolumeWas", find[find.index("private void release()"):])        # the raised volume is put back
+        self.assertIn("RING_MS = 120_000", find)
+        self.assertNotIn("find_loud", PHONE_JS.replace("setFindLoud", ""))   # the page cannot turn it on by itself
+        self.assertRegex(MANIFEST, r'<service android:name="\.FindService" android:exported="false" android:foregroundServiceType="mediaPlayback"')
+        for name in ("startFinding", "stopFinding", "findLoud", "setFindLoud"):
+            self.assertIn(name, bridge_methods())
 
     def test_the_ringtone_only_plays_when_the_phone_allows_a_call_to_ring(self):
         service, notify = self.sources["CallService.java"], self.sources["Notify.java"]

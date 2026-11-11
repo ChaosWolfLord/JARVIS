@@ -106,7 +106,10 @@ public class AlertService extends Service {
                 while (running && (line = r.readLine()) != null) {
                     if (!line.startsWith("data:")) continue;
                     JSONObject ev = new JSONObject(line.substring(5).trim());
-                    if (!"push".equals(ev.optString("type"))) continue;
+                    String kind = ev.optString("type");
+                    if ("find".equals(kind)) { FindService.start(this); continue; }          // "find my phone" on the PC
+                    if ("find_stop".equals(kind)) { FindService.stop(this); continue; }
+                    if (!"push".equals(kind)) continue;
                     String rid = ev.optString("rid", "");
                     String title = ev.optString("title", "JARVIS"), text = ev.optString("text", "");
                     if (!rid.isEmpty()) { Notify.reminder(this, rid, title, text); Reminders.heard(this, rid); }

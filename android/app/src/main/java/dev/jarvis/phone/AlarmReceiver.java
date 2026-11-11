@@ -8,6 +8,7 @@ import android.content.Intent;
 public class AlarmReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (Notify.FIND_STOP.equals(intent.getAction())) { FindService.stop(context); return; }
         String id = intent.getStringExtra("id");
         if (id == null) return;
         if (Reminders.ACTION.equals(intent.getAction())) Reminders.ring(context, id);

@@ -65,3 +65,11 @@ class OrbFrameRate(unittest.TestCase):
         run = subprocess.run(["node", "tests/js/orb_rate.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertIn("ok   ", run.stdout)
+
+
+@unittest.skipUnless(shutil.which("node"), "Node isn't installed, so the browser-side checks can't run")
+class FindMyPhoneVoice(unittest.TestCase):
+    def test_find_my_phone_and_the_remote_switch(self):
+        run = subprocess.run(["node", "tests/js/phonelink.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)

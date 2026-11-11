@@ -12,14 +12,21 @@ import android.os.Build;
 
 /** The app's notifications: reminders and alerts (they pop up and buzz) and the quiet one that shows the alert listener is running. */
 final class Notify {
-    static final String REMINDERS = "reminders", ALERTS = "alerts", SERVICE = "service", CALLS = "calls2", MISSED = "missed";
-    static final String CALL_ANSWER = "dev.jarvis.phone.CALL_ANSWER", CALL_DECLINE = "dev.jarvis.phone.CALL_DECLINE";
+    static final String REMINDERS = "reminders", ALERTS = "alerts", SERVICE = "service", CALLS = "calls2", MISSED = "missed", FIND = "find";
+    static final String CALL_ANSWER = "dev.jarvis.phone.CALL_ANSWER", CALL_DECLINE = "dev.jarvis.phone.CALL_DECLINE", FIND_STOP = "dev.jarvis.phone.FIND_STOP";
     static final long CALL_RINGS_MS = 45_000;           // an unanswered call stops ringing after this
 
     private Notify() { }
 
     private static void channels(Context c) {
         NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (nm.getNotificationChannel(FIND) == null) {                     // "find my phone": the notification is silent, FindService makes the sound
+            NotificationChannel find = new NotificationChannel(FIND, "Find my phone", NotificationManager.IMPORTANCE_HIGH);
+            find.setDescription("Shown while your PC is looking for this phone, with a button to stop the ringing");
+            find.setSound(null, null);
+            find.enableVibration(false);
+            nm.createNotificationChannel(find);
+        }
         if (nm.getNotificationChannel(CALLS) != null) return;
         nm.deleteNotificationChannel("calls");           // 1.2.6's channel made the sound itself; now CallService rings (so it is audible at the ringer's volume) and the channel is silent
         // The notification itself is silent: CallService plays the ringtone, and only when the phone's ringer is on and Do Not Disturb is off.
@@ -117,6 +124,23 @@ final class Notify {
                 .setTimeoutAfter(CALL_RINGS_MS)
                 .addAction(new Notification.Action.Builder(null, "Decline", decline).build())
                 .addAction(new Notification.Action.Builder(null, "Answer", answer).build())
+                .build();
+    }
+
+    /** "Find my phone": what shows while the PC is looking for this phone (Stop ends the ringing). */
+    static Notification finding(Context c, String text) {
+        channels(c);
+        PendingIntent stop = PendingIntent.getBroadcast(c, 77, new Intent(c, AlarmReceiver.class).setAction(FIND_STOP).putExtra("id", "find"), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        return new Notification.Builder(c, FIND)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Your PC is looking for this phone")
+                .setContentText(text)
+                .setStyle(new Notification.BigTextStyle().bigText(text))
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setOngoing(true)
+                .setContentIntent(open(c))
+                .setTimeoutAfter(FindService.RING_MS + 5_000)
+                .addAction(new Notification.Action.Builder(null, "Stop", stop).build())
                 .build();
     }
 

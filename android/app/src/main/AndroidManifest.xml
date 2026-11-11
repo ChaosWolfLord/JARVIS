@@ -80,6 +80,9 @@
         <!-- rings a reminder call (the ringtone, only when the phone's ringer allows it) -->
         <service android:name=".CallService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
 
+        <!-- "find my phone": rings this phone when the PC asks -->
+        <service android:name=".FindService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+
         <!-- optional: listens for alerts from the PC while the app is closed -->
         <service android:name=".AlertService" android:exported="false" android:foregroundServiceType="dataSync" />
     </application>

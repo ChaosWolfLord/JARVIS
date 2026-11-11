@@ -12,6 +12,8 @@ How it stays safe:
   * Anything that would normally ask "Allow?" on the PC (running code, sending a message, closing an app, fixes, anything after
     private data was read) is refused from the phone with a note; you do those on the PC itself.
   * Things the answer changes on the wall (notes, widgets, timers, holograms, pictures) happen on the PC page; the phone just gets a line saying so.
+  * The remote (touchpad, slide keys, media keys) works only while it has been switched on at the PC, for a limited time, and only for a short fixed list
+    of commands (see remote.py); a phone can never switch it on.
   * "Share to JARVIS" can send a picture (checked to really be a JPEG, PNG, GIF or WebP, at most 12 MB) or a note or a link to open, and nothing else.
   * The privacy screen locks the phone out too, and every phone message is written to the activity log.
 The connection is encrypted (HTTPS) with a certificate JARVIS makes for itself, because phone browsers only allow the microphone on
@@ -40,7 +42,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import audit, browser as browser_mod, persona, pictures as pictures_mod, reminders as reminders_mod, runner, store
+from . import audit, browser as browser_mod, persona, pictures as pictures_mod, reminders as reminders_mod, remote as remote_mod, runner, store
 
 WEB_PHONE = Path(__file__).resolve().parent.parent / "web" / "phone"
 PHONES_FILE = store.STATE / "phones.json"
@@ -287,6 +289,14 @@ class PhoneChat(BaseModel):
     speak: bool = False        # also say the answer on the PC's speakers
 
 
+class RemoteCommand(BaseModel):
+    do: str = Field(pattern="^(move|click|scroll|key|media)$")
+    dx: float = Field(default=0, ge=-1000, le=1000)
+    dy: float = Field(default=0, ge=-1000, le=1000)
+    button: str = Field(default="left", pattern="^(left|right)$")
+    key: str = Field(default="", max_length=12)
+
+
 class ShareRequest(BaseModel):
     what: str = Field(pattern="^(note|open)$")      # put it on the board as a note, or open the link in Chrome on the PC
     text: str = Field(min_length=1, max_length=2000)
@@ -368,8 +378,9 @@ def wall_line(ev: dict) -> str:
 def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcast: Callable[[dict], None],
               is_locked: Callable[[], bool] = lambda: False, events: "Events | None" = None,
               on_events_connect: Callable[[], None] | None = None, apk: Path | None = None, reminder_store=None,
-              local_command: Callable[[str], dict] | None = None) -> FastAPI:
+              local_command: Callable[[str], dict] | None = None, remote=None) -> FastAPI:
     events = events if events is not None else Events()
+    remote = remote or remote_mod.remote
     apk = apk or APK_FILE
     saved = reminder_store or reminders_mod.reminders
     app = FastAPI(title="JARVIS phone", docs_url=None, redoc_url=None, openapi_url=None)
@@ -544,6 +555,25 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
         audit.record("phone", f"picture shared ({len(body) // 1024} KB)")
         return {"ok": True, "id": pid}
 
+    @app.get("/remote/status")
+    def remote_status(authorization: str | None = Header(default=None)):
+        bearer(authorization)
+        return remote.status()
+
+    @app.post("/remote")
+    def remote_command(req: RemoteCommand, authorization: str | None = Header(default=None)):
+        """One touchpad, slide or media command. Refused unless the remote was switched on at the PC (and only for the commands in remote.py)."""
+        bearer(authorization)
+        if is_locked():
+            raise HTTPException(423, "The privacy screen is on.")
+        try:
+            remote.do(req.model_dump())
+        except remote_mod.NotArmed as e:
+            raise HTTPException(403, str(e)) from None
+        except remote_mod.RemoteError as e:
+            raise HTTPException(400, str(e)) from None
+        return {"ok": True}
+
     @app.post("/share")
     def share(req: ShareRequest, authorization: str | None = Header(default=None)):
         """Text or a link shared from the phone: a note on the board, or (for a web address) opened in Chrome on the PC with the usual limits."""
@@ -651,7 +681,7 @@ class PhoneService:
         return f"{'https' if self.tls else 'http'}://{ip}:{self.port}"
 
     def start(self, chat_turn, broadcast, is_locked, port: int = 8443, tls: bool = True, host: str = "0.0.0.0", on_events_connect=None, apk: Path | None = None,
-              local_command=None) -> None:
+              local_command=None, remote=None) -> None:
         import uvicorn
         self.ip, self.port, self.tls, self.error = lan_ip(), port, tls, ""
         try:
@@ -659,7 +689,7 @@ class PhoneService:
             if tls:
                 cert, key = ensure_cert(self.ip)
                 kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
-            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store, local_command)
+            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store, local_command, remote)
             self.server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False, **kwargs))
         except Exception as e:  # noqa: BLE001 - a phone door that can't start must never stop JARVIS starting
             self.error = f"{e.__class__.__name__}: {e}"

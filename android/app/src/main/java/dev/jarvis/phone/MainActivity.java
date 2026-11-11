@@ -674,6 +674,26 @@ public class MainActivity extends Activity {
             if (ok() && id != null) Reminders.heard(MainActivity.this, id);
         }
 
+        /** "Find my phone": ring this phone now (the PC asked), or stop. Rings only as the phone's silent mode and Do Not Disturb allow, unless the person allowed more. */
+        @JavascriptInterface
+        public void startFinding() {
+            if (ok()) FindService.start(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void stopFinding() {
+            if (ok()) FindService.stop(MainActivity.this);
+        }
+
+        /** May "find my phone" ring even when the phone is on silent or Do Not Disturb is on? Off unless the person turns it on here. */
+        @JavascriptInterface
+        public boolean findLoud() { return ok() && FindService.loud(MainActivity.this); }
+
+        @JavascriptInterface
+        public void setFindLoud(boolean on) {
+            if (ok()) prefs.edit().putBoolean("find_loud", on).apply();
+        }
+
         /** What was shared to JARVIS from another app: {kind: "text", text} or {kind: "image"} once, or "" when nothing is waiting. */
         @JavascriptInterface
         public String takeShare() { return ok() ? Share.take() : ""; }

@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, reminders as reminders_mod, runner, store, wakeword
+from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, runner, store, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -592,6 +592,45 @@ def phone_push(req: PhonePush):
     if privacy.locked():
         return {"sent": 0}
     return {"sent": phone_service.publish({"type": "push", "title": req.title, "text": req.text})}
+
+
+class RemoteOn(BaseModel):
+    minutes: float = Field(default=remote_mod.DEFAULT_MINUTES, ge=1, le=remote_mod.MAX_MINUTES)
+
+
+remote_mod.remote.log = lambda text: audit.record("remote", text)
+
+
+@app.get("/api/phone/remote")
+def remote_status():
+    """Is the phone remote switched on, and for how much longer? (Only this PC's own page can switch it on or off.)"""
+    return remote_mod.remote.status()
+
+
+@app.post("/api/phone/remote")
+def remote_on(req: RemoteOn):
+    """"Let my phone be a remote" for a limited time. It switches itself off afterwards."""
+    if not remote_mod.remote.status()["supported"]:
+        raise HTTPException(409, "The phone remote only works on Windows.")
+    return remote_mod.remote.arm(req.minutes)
+
+
+@app.delete("/api/phone/remote")
+def remote_off():
+    return remote_mod.remote.disarm()
+
+
+@app.post("/api/phone/find")
+def phone_find():
+    """"Find my phone": every paired phone that is listening is told to ring (and says so if it is on silent, unless its owner allowed that)."""
+    sent = phone_service.publish({"type": "find"})
+    audit.record("phone", f"find my phone: asked {sent} phone(s)")
+    return {"sent": sent}
+
+
+@app.delete("/api/phone/find")
+def phone_find_stop():
+    return {"sent": phone_service.publish({"type": "find_stop"})}
 
 
 @app.delete("/api/phone")

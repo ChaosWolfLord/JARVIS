@@ -44,11 +44,13 @@
         <h3>On the PC</h3>
         <label class="row"><span><b>Show on the wall</b><small>Your questions and the answers pop up on the PC screen.</small></span><input type="checkbox" class="switch" id="opt-wall" checked></label>
         <label class="row"><span><b>Say answers on the PC speakers</b><small>The PC reads each answer out loud.</small></span><input type="checkbox" class="switch" id="opt-speak"></label>
+        <button id="open-remote" type="button" class="action">Remote: touchpad, slides, music…</button>
       </section>
 
       <section class="set" id="set-alerts">
         <h3>Alerts and battery</h3>
         <label class="row" id="bg-row" hidden><span><b>Alerts when the app is closed</b><small>Keeps a small notification so alerts from your PC reach you.</small></span><input type="checkbox" class="switch" id="opt-bg"></label>
+        <label class="row" id="find-row" hidden><span><b>Let “find my phone” ring on silent</b><small>Off by default. When on, “Jarvis, find my phone” (or the button on the PC) rings at full volume even if this phone is silent or in Do Not Disturb. To find it while the app is closed, keep “Alerts when the app is closed” on.</small></span><input type="checkbox" class="switch" id="opt-find"></label>
         <label class="row"><span><b>Keep the screen on</b><small>Uses battery. Helps alerts reach you while this page is open.</small></span><input type="checkbox" class="switch" id="opt-awake"></label>
       </section>
 
@@ -95,6 +97,16 @@
         <p id="rem-msg" class="msg-error" role="alert"></p>
       </form>
       <p class="hint">Reminders made here ring on this phone even when the PC is off, and sync with the PC when it is on.</p>
+    </section>
+    <section id="remote" hidden aria-label="Remote">
+      <header><b>Remote</b><button type="button" id="remote-close" class="icon" aria-label="Close the remote">✕</button></header>
+      <p id="remote-state" role="status">Checking…</p>
+      <div id="pad" role="application" aria-label="Touchpad: drag to move the pointer, tap to click, tap with two fingers to right-click, drag with two fingers to scroll"><span>Touchpad</span><small>drag to move · tap to click · two fingers: scroll, tap to right-click</small></div>
+      <div class="rrow"><button type="button" data-click="left">Click</button><button type="button" data-click="right">Right-click</button></div>
+      <div class="rrow big"><button type="button" data-key="left" aria-label="Previous slide">◀</button><button type="button" data-key="right" aria-label="Next slide">▶</button></div>
+      <div class="rrow"><button type="button" data-key="f5">Start slides</button><button type="button" data-key="escape">Esc</button><button type="button" data-key="pageup">Page up</button><button type="button" data-key="pagedown">Page down</button></div>
+      <div class="rrow"><button type="button" data-media="prev" aria-label="Previous track">⏮</button><button type="button" data-media="playpause" aria-label="Play or pause">⏯</button><button type="button" data-media="next" aria-label="Next track">⏭</button></div>
+      <div class="rrow"><button type="button" data-media="voldown">Vol −</button><button type="button" data-media="mute">Mute</button><button type="button" data-media="volup">Vol +</button></div>
     </section>
     <div id="log" aria-live="polite"></div>
     <form id="composer">

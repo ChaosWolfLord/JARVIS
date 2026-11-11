@@ -380,7 +380,7 @@ const privacy = new Privacy({
   onUnlocked: () => { board.sync(); status.poll(); },
 });
 window.jarvis.privacy = privacy;
-voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || pictureUI.handleVoice(command) || appsUI.handleVoice(command);
+voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
 chat.onTyped = (text) => voice.special(text);       // typing "show off", "lights off"... in the chat box works like saying it
 $('privacy-lock').addEventListener('click', () => privacy.lock());
 $('privacy-setcode').addEventListener('click', () => {
