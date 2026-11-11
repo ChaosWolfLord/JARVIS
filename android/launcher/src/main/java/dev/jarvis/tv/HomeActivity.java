@@ -290,9 +290,7 @@ public class HomeActivity extends Activity {
     private void open(App app) {
         Intent launch;
         if (app.pkg.equals(HDMI)) {
-            // exactly what the projector's own Inputs screen does when HDMI1 is chosen: Live TV with the input to show
-            launch = new Intent().setComponent(new ComponentName("com.softwinner.awlivetv", "com.softwinner.awlivetv.MainActivity"))
-                    .putExtra("input_source", "hdmi1").addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+            launch = Hdmi.intent();
         } else {
             String pkg = app.pkg.equals(USB) ? FILE_MANAGER : app.pkg;
             launch = getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
@@ -368,6 +366,8 @@ public class HomeActivity extends Activity {
                 });
             }
         }
+        labels.add("Remote button for HDMI...");
+        actions.add(this::hdmiButtonDialog);
         labels.add("Hidden apps...");
         actions.add(this::hiddenDialog);
         labels.add("Reset pinned apps");
@@ -402,6 +402,73 @@ public class HomeActivity extends Activity {
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    // ---- a remote button that opens HDMI ----------------------------------------------------------------------------
+
+    /** Buttons that are needed to move around, so they can't be taken over. */
+    private static boolean reserved(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP: case KeyEvent.KEYCODE_DPAD_DOWN: case KeyEvent.KEYCODE_DPAD_LEFT: case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_HOME:
+            case KeyEvent.KEYCODE_MENU: case KeyEvent.KEYCODE_POWER: case KeyEvent.KEYCODE_VOLUME_UP: case KeyEvent.KEYCODE_VOLUME_DOWN:
+            case KeyEvent.KEYCODE_VOLUME_MUTE:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean keyServiceOn() {
+        String on = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        return on != null && on.contains(getPackageName() + "/");
+    }
+
+    private static String describeKey(int code, int scan) {
+        return code == KeyEvent.KEYCODE_UNKNOWN ? "button #" + scan : KeyEvent.keyCodeToString(code).replace("KEYCODE_", "");
+    }
+
+    /** Lets you press the remote button that should open HDMI from anywhere (see KeyService). */
+    private void hdmiButtonDialog() {
+        int current = prefs.getInt(KeyService.KEY_CODE, KeyService.NONE);
+        String now = current == KeyService.NONE ? "No button is chosen yet.": "Now: " + describeKey(current, prefs.getInt(KeyService.KEY_SCAN, -1)) + ".";
+        AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Remote button for HDMI")
+                .setMessage(now + "\n\nPress the remote button you want to open HDMI. The arrow keys, OK, Back, Home, Menu, Power and Volume can't be used. Press Back to cancel.")
+                .setNegativeButton("Clear", (d, w) -> {
+                    prefs.edit().remove(KeyService.KEY_CODE).remove(KeyService.KEY_SCAN).apply();
+                    Toast.makeText(this, "HDMI button cleared", Toast.LENGTH_SHORT).show();
+                })
+                .create();
+        dialog.setOnKeyListener((d, keyCode, event) -> {
+            if (reserved(keyCode)) return false;                 // normal behaviour, so the Clear button and Back still work
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                prefs.edit().putInt(KeyService.KEY_CODE, keyCode).putInt(KeyService.KEY_SCAN, event.getScanCode()).apply();
+                d.dismiss();
+                if (keyServiceOn()) {
+                    Toast.makeText(this, describeKey(keyCode, event.getScanCode()) + " now opens HDMI", Toast.LENGTH_LONG).show();
+                } else {
+                    keyServiceDialog(describeKey(keyCode, event.getScanCode()));
+                }
+            }
+            return true;
+        });
+        dialog.show();
+    }
+
+    private void keyServiceDialog(String button) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(button + " is chosen")
+                .setMessage("One more step: turn on \"JARVIS Home remote button\" in Settings, Accessibility. It is what lets the button work in every app.")
+                .setPositiveButton("Open settings", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } catch (ActivityNotFoundException | SecurityException e) {
+                        Toast.makeText(this, "Open Settings, then Accessibility, yourself", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Later", null)
                 .show();
     }
 
