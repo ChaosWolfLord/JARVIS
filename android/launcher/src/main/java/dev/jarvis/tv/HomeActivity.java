@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -46,8 +47,11 @@ import java.util.Set;
  * all reachable with the remote's arrow keys and OK. Long-press OK (or press Menu) on an app for pin, hide, app info and uninstall.
  */
 public class HomeActivity extends Activity {
-    static final String JARVIS_PACKAGE = "dev.jarvis.phone";              // the JARVIS Android app
-    private static final String[] DEFAULT_PINNED = {JARVIS_PACKAGE, "com.htc.magcubicos", "com.softwinner.awsource", "com.android.tv.settings", "com.android.vending", "com.hisilicon.explorer"};
+    // Two buttons that are not apps: HDMI (shows whatever is plugged into the projector's HDMI socket) and USB (the file manager, which lists a plugged-in drive).
+    static final String HDMI = "tv:hdmi";
+    static final String USB = "tv:usb";
+    private static final String FILE_MANAGER = "com.hisilicon.explorer";
+    private static final String[] DEFAULT_PINNED = {HDMI, "com.htc.magcubicos", "com.softwinner.awsource", "com.android.tv.settings", "com.android.vending", FILE_MANAGER};
     // The factory test menu (nothing to do there) and Google's touch-screen "Files" app: it can't be steered with arrow keys, and the
     // projector already has its own remote-friendly file manager (the pinned "Files"). "Hidden apps..." in the options brings either back.
     private static final String[] DEFAULT_HIDDEN = {"com.softwinner.tv.factorymenu", "com.android.documentsui"};
@@ -64,10 +68,8 @@ public class HomeActivity extends Activity {
     private static final class App {
         String pkg;
         String label;
-        ResolveInfo info;        // the icon is only loaded (and shrunk to the tile's size) for apps that are actually shown
-        Drawable icon;           // only the JARVIS placeholder has one ready
+        ResolveInfo info;        // the icon is only loaded (and shrunk to the tile's size) for apps that are actually shown; null for the HDMI and USB buttons
         boolean system;
-        boolean installed = true;
     }
 
     private String lastFocus;    // which app was selected when the screen was released, so it can be selected again
@@ -197,7 +199,16 @@ public class HomeActivity extends Activity {
         }
         List<App> apps = new ArrayList<>(found.values());
         Collections.sort(apps, (a, b) -> a.label.toLowerCase(Locale.ROOT).compareTo(b.label.toLowerCase(Locale.ROOT)));
+        apps.add(0, button(USB, "USB"));
+        apps.add(0, button(HDMI, "HDMI"));
         return apps;
+    }
+
+    private App button(String key, String label) {
+        App app = new App();
+        app.pkg = key;
+        app.label = label;
+        return app;
     }
 
     private List<String> pinnedKeys() {
@@ -232,13 +243,6 @@ public class HomeActivity extends Activity {
         Tile first = null, wanted = null;
         for (String key : pinned) {
             App app = byPkg.get(key);
-            if (app == null && key.equals(JARVIS_PACKAGE)) {                       // the JARVIS app is not on this projector yet: keep its place
-                app = new App();
-                app.pkg = key;
-                app.label = "JARVIS";
-                app.icon = new OrbDrawable();
-                app.installed = false;
-            }
             if (app == null) continue;
             Tile tile = tile(app, 112, 104, 52);              // six of these (plus their margins) fill the width of a 16:9 screen
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
@@ -262,8 +266,8 @@ public class HomeActivity extends Activity {
 
     /** An app's icon drawn once into a bitmap exactly as big as it is shown (apps' own icons can be 512 pixels wide: about 1 MB each). */
     private Drawable smallIcon(App app, int sizeDp) {
-        if (app.icon != null) return app.icon;
         int px = dp(sizeDp);
+        if (app.info == null) return new android.graphics.drawable.BitmapDrawable(getResources(), Glyphs.draw(app.pkg, px));
         Drawable full = app.info.loadIcon(getPackageManager());
         android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
         full.setBounds(0, 0, px, px);
@@ -284,15 +288,16 @@ public class HomeActivity extends Activity {
     // ---- opening and options ----------------------------------------------------------------------------------
 
     private void open(App app) {
-        if (!app.installed) {
-            new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                    .setTitle("JARVIS app not installed")
-                    .setMessage("The JARVIS app isn't on this projector yet. On the PC, run android\\install_projector.bat jarvis (the projector must be connected by USB).")
-                    .setPositiveButton("OK", null).show();
-            return;
+        Intent launch;
+        if (app.pkg.equals(HDMI)) {
+            // exactly what the projector's own Inputs screen does when HDMI1 is chosen: Live TV with the input to show
+            launch = new Intent().setComponent(new ComponentName("com.softwinner.awlivetv", "com.softwinner.awlivetv.MainActivity"))
+                    .putExtra("input_source", "hdmi1").addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+        } else {
+            String pkg = app.pkg.equals(USB) ? FILE_MANAGER : app.pkg;
+            launch = getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
+            if (launch == null) launch = getPackageManager().getLaunchIntentForPackage(pkg);
         }
-        Intent launch = getPackageManager().getLeanbackLaunchIntentForPackage(app.pkg);
-        if (launch == null) launch = getPackageManager().getLaunchIntentForPackage(app.pkg);
         try {
             if (launch == null) throw new ActivityNotFoundException();
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
@@ -332,18 +337,18 @@ public class HomeActivity extends Activity {
                 refresh();
             });
         }
-        if (app.installed) {
-            labels.add("Hide from the list");
-            actions.add(() -> {
-                Set<String> hidden = hiddenKeys();
-                hidden.add(app.pkg);
-                saveHidden(hidden);
-                if (isPinned) {
-                    pinned.remove(app.pkg);
-                    savePinned(pinned);
-                }
-                refresh();
-            });
+        labels.add("Hide from the list");
+        actions.add(() -> {
+            Set<String> hidden = hiddenKeys();
+            hidden.add(app.pkg);
+            saveHidden(hidden);
+            if (isPinned) {
+                pinned.remove(app.pkg);
+                savePinned(pinned);
+            }
+            refresh();
+        });
+        if (app.info != null) {                                       // the HDMI and USB buttons are not apps
             labels.add("App info");
             actions.add(() -> {
                 try {
@@ -407,14 +412,6 @@ public class HomeActivity extends Activity {
         if (keyCode == KeyEvent.KEYCODE_MENU && getCurrentFocus() instanceof Tile) {
             Tile tile = (Tile) getCurrentFocus();
             for (App a : everyApp) if (a.pkg.equals(tile.key)) { options(a); return true; }
-            if (tile.key.equals(JARVIS_PACKAGE)) {
-                App placeholder = new App();
-                placeholder.pkg = JARVIS_PACKAGE;
-                placeholder.label = "JARVIS";
-                placeholder.installed = false;
-                options(placeholder);
-                return true;
-            }
         }
         return super.onKeyUp(keyCode, event);
     }
