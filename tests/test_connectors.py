@@ -257,5 +257,69 @@ class Offered(unittest.TestCase):
             self.assertEqual(agent._run_lookup("calendar_events", {}), "Error: Run connect.bat google.")
 
 
+class RunningConnect(unittest.TestCase):
+    """connect.bat: it signs in to Google when nothing is said, writes what it shows to a log, and explains the usual Google problems."""
+
+    def setUp(self):
+        from server import connect
+        self.connect = connect
+        self.log = Path(tempfile.mkdtemp()) / "connect.log"
+        self.patches = [mock.patch.object(connect, "LOG", self.log)]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+
+    def run_main(self, argv, **google_result):
+        with mock.patch.object(sys, "argv", ["connect", *argv]), mock.patch.object(self.connect, "google", return_value=0, **google_result) as g,                 mock.patch.object(self.connect, "discord", return_value=0) as d:
+            code = self.connect.main()
+        return code, g, d
+
+    def test_with_nothing_after_it_signs_in_to_google(self):
+        code, g, d = self.run_main([])
+        self.assertEqual(code, 0)
+        g.assert_called_once_with(write=False, email=None)
+        d.assert_not_called()
+
+    def test_the_options_still_work(self):
+        _, g, _ = self.run_main(["google", "write", "me@example.com"])
+        g.assert_called_once_with(write=True, email="me@example.com")
+        _, g, d = self.run_main(["discord"])
+        d.assert_called_once()
+        code, g, d = self.run_main(["nonsense"])
+        self.assertEqual(code, 2)
+
+    def test_what_the_window_shows_is_also_saved(self):
+        with mock.patch.object(sys, "argv", ["connect", "google"]), mock.patch.object(self.connect, "google", side_effect=lambda **k: print("Signed in. Checking Calendar...") or 0):
+            self.connect.main()
+        text = self.log.read_text("utf-8")
+        self.assertIn("connect.bat google", text)
+        self.assertIn("Signed in. Checking Calendar...", text)
+
+    def test_an_unexpected_error_is_explained_and_logged_not_just_a_closing_window(self):
+        with mock.patch.object(sys, "argv", ["connect", "google"]), mock.patch.object(self.connect, "google", side_effect=OSError("port in use")):
+            code = self.connect.main()
+        self.assertEqual(code, 1)
+        text = self.log.read_text("utf-8")
+        self.assertIn("Something unexpected stopped it: OSError: port in use", text)
+        self.assertIn("Traceback", text)
+
+    def test_the_usual_google_problems_come_with_what_to_do(self):
+        cases = {"Google said: access_denied.": "Test users", "No answer from Google within a few minutes. Run it again.": "ten minutes",
+                 "Google no longer accepts the saved sign-in (it expires after 7 days while the app is in Testing mode).": "Publish app",
+                 "Couldn't reach Google. Check the internet connection.": "firewall"}
+        for message, hint in cases.items():
+            out = []
+            with mock.patch.object(self.connect.google_auth, "client_info", return_value={}), mock.patch.object(self.connect.google_auth, "account_email", return_value=None),                     mock.patch.object(self.connect.google_auth, "authorize", side_effect=google_auth.GoogleAuthError(message)), mock.patch("builtins.print", side_effect=lambda *a, **k: out.append(" ".join(map(str, a)))):
+                self.assertEqual(self.connect.google(), 1)
+            self.assertTrue(any(hint in line for line in out), message)
+
+    def test_the_sign_in_is_kept_outside_onedrive(self):
+        self.assertIn("jarvis", str(google_auth.TOKEN_FILE).lower())
+        self.assertNotIn("onedrive", str(google_auth.TOKEN_FILE).lower())
+
+
 if __name__ == "__main__":
     unittest.main()

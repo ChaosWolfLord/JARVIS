@@ -5,6 +5,8 @@ import sys
 
 from . import discord_tools, google_auth, google_tools, store
 
+LOG = store.STATE / "connect.log"
+
 store.load_env()
 
 GOOGLE_STEPS = f"""
@@ -33,6 +35,18 @@ Discord doesn't let programs read a personal account's DMs, so JARVIS reads the 
 """
 
 
+SIGN_IN_HINTS = (
+    ("access_denied", "Google refused the sign-in. In Google Cloud Console (APIs & Services > OAuth consent screen) check that your own Gmail address is under \"Test users\" "
+                      "and that you signed in with that account. When Google says the app is unverified, choose Advanced, then Continue: it is your own app."),
+    ("no answer", "The sign-in page has to be finished in the browser that opened (choose your account, then Advanced > Continue, then Allow). If nothing opened, paste the long address "
+                  "printed above into your browser. The window waits ten minutes."),
+    ("didn't match", "Another sign-in page from an earlier try may still be open in the browser. Close it and run this again."),
+    ("didn't finish", "Google answered but did not hand over the sign-in. Run it again and approve every permission it asks for (do not untick any boxes)."),
+    ("no longer accepts", "While the Google app is in \"Testing\" mode the sign-in lasts 7 days. Press \"Publish app\" on the OAuth consent screen so it stops expiring, then run this again."),
+    ("couldn't reach google", "JARVIS could not reach Google. Check the internet connection (and that a firewall is not blocking Python) and try again."),
+)
+
+
 def google(write: bool = False, email: str | None = None) -> int:
     try:
         google_auth.client_info()
@@ -50,6 +64,10 @@ def google(write: bool = False, email: str | None = None) -> int:
         print("Gmail:", google_tools.gmail_search("in:inbox", 1)[:300])
     except google_auth.GoogleAuthError as e:
         print(f"Problem: {e}")
+        for key, hint in SIGN_IN_HINTS:
+            if key in str(e).lower():
+                print(hint)
+                break
         return 1
     if write:
         print("\nGoogle is connected, with permission to save Gmail drafts and add calendar events (each one still asks you first).")
@@ -70,15 +88,59 @@ def discord() -> int:
     return 0
 
 
+class _Tee:
+    """Writes what the window shows to connect.log too, so a window that closes (or a message that was hard to copy) is not lost."""
+
+    def __init__(self, stream, log) -> None:
+        self.stream, self.log = stream, log
+
+    def write(self, text: str) -> int:
+        try:
+            self.log.write(text)
+            self.log.flush()
+        except (OSError, ValueError):
+            pass
+        return self.stream.write(text)
+
+    def flush(self) -> None:
+        self.stream.flush()
+
+
 def main() -> int:
-    target = (sys.argv[1] if len(sys.argv) > 1 else "").lower()
-    if target == "google":
-        extra = sys.argv[2:]
-        return google(write="write" in [a.lower() for a in extra], email=next((a for a in extra if "@" in a), None))
-    if target == "discord":
-        return discord()
-    print("Usage: connect.bat google [write] [you@gmail.com]   |   connect.bat discord")
-    return 2
+    """connect.bat google [write] [you@gmail.com] | connect.bat discord.  With nothing after it, it signs in to Google (the usual reason to run it)."""
+    import datetime
+    import traceback
+
+    log = None
+    try:
+        LOG.parent.mkdir(parents=True, exist_ok=True)
+        log = LOG.open("a", encoding="utf-8")
+        log.write(f"\n===== {datetime.datetime.now():%Y-%m-%d %H:%M:%S}  connect.bat {' '.join(sys.argv[1:]) or '(google)'} =====\n")
+        sys.stdout = _Tee(sys.stdout, log)
+    except OSError:
+        pass
+    try:
+        args = sys.argv[1:] or ["google"]
+        target = args[0].lower()
+        if target == "google":
+            extra = args[1:]
+            return google(write="write" in [a.lower() for a in extra], email=next((a for a in extra if "@" in a), None))
+        if target == "discord":
+            return discord()
+        print("Usage: connect.bat google [write] [you@gmail.com]   |   connect.bat discord")
+        return 2
+    except KeyboardInterrupt:
+        print("\nStopped.")
+        return 1
+    except Exception as e:  # noqa: BLE001 - whatever went wrong is shown in plain words and written to the log, never a bare traceback in a closing window
+        print(f"\nSomething unexpected stopped it: {e.__class__.__name__}: {e}")
+        print("The details were saved in " + str(LOG) + " so they can be looked at.")
+        traceback.print_exc(file=sys.stdout)
+        return 1
+    finally:
+        if log:
+            sys.stdout = sys.__stdout__
+            log.close()
 
 
 if __name__ == "__main__":
