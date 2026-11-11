@@ -292,7 +292,41 @@ $('menu-btn').addEventListener('click', () => {
   const open = $('menu').hidden;
   $('menu').hidden = !open;
   $('menu-btn').setAttribute('aria-expanded', String(open));
+  if (open && !LOCAL) loadRoutines();
 });
+
+// Routines made on the PC (status menu, Routines): listed here so one tap runs them. They can only be started from the phone, never changed.
+async function loadRoutines() {
+  try {
+    const res = await api('/routines');
+    if (!res.ok) return;
+    const list = (await res.json()).routines || [];
+    $('set-routines').hidden = !list.length;
+    const box = $('routine-buttons');
+    box.replaceChildren();
+    for (const r of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'action';
+      b.textContent = r.name;
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        $('menu').hidden = true;
+        add('did', `Running ${r.name}…`);
+        try {
+          const out = await api('/routines/run', { method: 'POST', body: JSON.stringify({ id: r.id }) });
+          const data = await out.json().catch(() => ({}));
+          add(out.ok && data.ok !== false ? 'did' : 'err', out.ok ? data.text : data.detail || 'That did not work.');
+        } catch {
+          add('err', 'Could not reach your PC.');
+        } finally {
+          b.disabled = false;
+        }
+      });
+      box.append(b);
+    }
+  } catch { /* offline: the section just stays hidden */ }
+}
 for (const [id, key] of [['opt-wall', 'wall'], ['opt-speak', 'speak'], ['opt-read', 'read'], ['opt-auto', 'auto'], ['opt-awake', 'awake']]) {
   $(id).addEventListener('change', (e) => { prefs[key] = e.target.checked; store.set(PREF_KEY, JSON.stringify(prefs)); if (key === 'awake') keepAwake(); });
 }

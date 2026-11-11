@@ -180,6 +180,7 @@ export class Chat {
     else if (ev.type === 'widget') this.onWidget?.(ev);
     else if (ev.type === 'holo') this.onHolo?.(ev);
     else if (ev.type === 'picture') this.onPicture?.(ev);
+    else if (ev.type === 'files') this.onFiles?.(ev);
     else if (ev.type === 'timer') this.onTimer?.(ev);
   }
 

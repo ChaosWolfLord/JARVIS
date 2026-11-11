@@ -637,6 +637,20 @@ body.ambient #orb-big { transform: translate(-50%, -50%) scale(1); }
 #holo { width: 548px; background: rgba(1, 10, 16, 0.97); }
 #holo-canvas { display: block; width: 520px; height: 360px; border-radius: 8px; background: radial-gradient(ellipse at 50% 55%, rgba(var(--accent-rgb), 0.1), rgba(0, 10, 16, 0.2) 70%); border: 1px solid rgba(var(--accent-rgb), 0.18); }
 #holo header b { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.routine-form { display: flex; flex-direction: column; gap: 8px; }
+.routine-form[hidden] { display: none; }
+.routine-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; opacity: 0.9; }
+.routine-form input, .routine-form textarea { font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(var(--accent-rgb), 0.3); background: rgba(0, 0, 0, 0.25); color: inherit; resize: vertical; }
+#files { width: 620px; background: rgba(1, 10, 16, 0.97); }
+#files header b { max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#files-list, .files-folders { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; }
+#files-list li, .files-folders li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(var(--accent-rgb), 0.06); border: 1px solid rgba(var(--accent-rgb), 0.14); }
+.files-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.files-info b { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-info small, .files-folder { font-size: 12px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-buttons { display: flex; gap: 6px; flex: none; }
+#files-list button, .files-folders button { padding: 6px 10px; font-size: 13px; border-radius: 8px; border: 1px solid rgba(var(--accent-rgb), 0.35); background: rgba(var(--accent-rgb), 0.1); color: inherit; cursor: pointer; }
+#files-list li.files-none, .files-folders li.files-none { justify-content: center; opacity: 0.7; background: none; border-style: dashed; }
 #picture { width: 620px; background: rgba(1, 10, 16, 0.97); }
 #picture header b { max-width: 470px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #picture-frame { display: grid; place-items: center; width: 592px; height: 400px; border-radius: 8px; background: rgba(0, 10, 16, 0.5); border: 1px solid rgba(var(--accent-rgb), 0.18); overflow: hidden; }

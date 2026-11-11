@@ -56,6 +56,40 @@
           </div>
         </details>
 
+        <details class="sd-sec" id="sec-routines">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/><path d="M17 16l3 2-3 2z"/></svg><span><b>Routines</b><small>One phrase, many steps (“movie night”)</small></span></summary>
+          <div class="sd-inner">
+            <ul id="routine-list" class="files-folders"></ul>
+            <div class="status-actions"><button type="button" id="routine-new">New routine</button></div>
+            <form id="routine-form" class="routine-form" hidden autocomplete="off">
+              <label>Name <input id="routine-name" type="text" maxlength="40" placeholder="Movie night"></label>
+              <label>Other phrases that start it (separate with commas) <input id="routine-phrases" type="text" placeholder="film time, start the film"></label>
+              <label>Steps, one per line <textarea id="routine-steps" rows="6" placeholder="dim the lights to 20 percent&#10;play some jazz&#10;set a timer for 120 minutes&#10;say Enjoy the film"></textarea></label>
+              <div class="status-actions">
+                <button type="submit">Save</button>
+                <button type="button" id="routine-test">Save and run</button>
+                <button type="button" id="routine-cancel">Cancel</button>
+              </div>
+            </form>
+            <p class="wm-hint">Each step is a sentence you could say to JARVIS: <i>turn the lights off</i>, <i>play some jazz</i>, <i>open spotify</i>, <i>open youtube.com</i>, <i>set a timer for 20 minutes</i>, <i>say good night</i>, <i>note buy milk</i>, <i>wait 5 seconds</i>. Say the routine's name to run it, from here or from your phone.</p>
+            <p id="routine-note" class="wm-hint" role="status"></p>
+          </div>
+        </details>
+
+        <details class="sd-sec" id="sec-files">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg><span><b>Files JARVIS may search</b><small>For “find the doc I edited yesterday”</small></span></summary>
+          <div class="sd-inner">
+            <p class="wm-hint">JARVIS looks only in the folders you add here, and nothing leaves this PC. Passwords, keys and other secrets are never listed, and programs are never opened.</p>
+            <ul id="finder-folders" class="files-folders"></ul>
+            <div id="finder-suggest" class="status-actions"></div>
+            <form id="finder-form" class="status-field" autocomplete="off">
+              <input id="finder-path" type="text" placeholder="A folder, for example C:\Users\you\Documents" aria-label="Folder to add">
+              <button type="submit">Add</button>
+            </form>
+            <p id="finder-note" class="wm-hint" role="status"></p>
+          </div>
+        </details>
+
         <details class="sd-sec" id="sec-privacy">
           <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span><b>Privacy</b><small>Hide the screen, set an unlock code</small></span></summary>
           <div class="sd-inner">
@@ -165,6 +199,14 @@
           </header>
           <canvas id="holo-canvas"></canvas>
           <footer id="holo-caption" class="sys-foot"></footer>
+        </section>
+        <section id="files" class="widget" hidden aria-label="Files">
+          <header>
+            <b id="files-title">FILES</b>
+            <button type="button" class="w-close" data-close="files" title="Remove this widget">×</button>
+          </header>
+          <ul id="files-list"></ul>
+          <footer id="files-foot" class="sys-foot"></footer>
         </section>
         <section id="picture" class="widget" hidden aria-label="Picture">
           <header>

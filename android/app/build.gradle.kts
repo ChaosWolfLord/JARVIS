@@ -20,8 +20,8 @@ android {
         applicationId = "dev.jarvis.phone"
         minSdk = 29            // Android 10: the WebView then hands over the server's certificate, which the app compares with the pinned one
         targetSdk = 34
-        versionCode = 13
-        versionName = "1.3.0"
+        versionCode = 14
+        versionName = "1.3.1"
     }
     buildTypes {
         release {

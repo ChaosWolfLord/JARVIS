@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, runner, store, wakeword
+from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, filefinder as filefinder_mod, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, routines as routines_mod, runner, store, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -57,6 +57,7 @@ async def lifespan(_app):
             tell_page,
             privacy.locked,
             local_command=lambda text: localcmd.handle(text, tell_page),
+            routines=_Routines(),
             on_events_connect=lambda: courier.deliver_due(),      # a phone just opened its page: hand over reminders that were waiting for it
             port=int(os.getenv("JARVIS_PHONE_PORT", "8443")),
             tls=os.getenv("JARVIS_PHONE_TLS", "1") != "0",
@@ -99,6 +100,28 @@ class _Wake:
 
 
 wake = _Wake()
+
+
+def tell_pages(event: dict) -> None:
+    """Sends an event to every open page (the wall). Used by routines and the file finder, which run on a worker thread."""
+    loop = wake.loop
+    if loop is not None:
+        asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop)
+
+
+class _Routines:
+    """What the phone door may do with routines: list them, and run one by its id (it can never change them)."""
+
+    def list(self) -> list[dict]:
+        return [{"id": r["id"], "name": r["name"], "steps": len(r["steps"])} for r in routines_mod.load()]
+
+    def run(self, key: str) -> dict:
+        r = routines_mod.find(key)
+        if r is None:
+            return {"ok": False, "text": "I don't have a routine called that."}
+        out = routines_mod.run(r, lambda step: localcmd.commands(step, tell_pages), tell_pages)
+        audit.record("routine", r["name"], "ok" if not out["problems"] else "error")
+        return {"ok": not out["problems"], "text": out["text"]}
 
 
 def find_lights() -> None:
@@ -398,6 +421,107 @@ async def post_notify(req: Notice, x_jarvis_token: str | None = Header(default=N
 def get_apps():
     """The apps JARVIS may open (from the Start Menu, minus everything unsafe) and the programs currently running."""
     return {"enabled": apps_mod.available(), "apps": apps_mod.apps.names(), "running": apps_mod.apps.running()}
+
+
+class RoutinesIn(BaseModel):
+    routines: list[dict] = Field(default=[], max_length=routines_mod.MAX_ROUTINES)
+
+
+class RoutineRun(BaseModel):
+    id: str = Field(min_length=1, max_length=60)
+
+
+@app.get("/api/routines")
+def routines_list():
+    """The routines you made (status menu, Routines)."""
+    return {"routines": routines_mod.load()}
+
+
+@app.put("/api/routines")
+def routines_save(req: RoutinesIn):
+    try:
+        saved = routines_mod.save(req.routines)
+    except routines_mod.RoutineError as e:
+        raise HTTPException(400, str(e)) from None
+    audit.record("routine", f"routines saved: {len(saved)}")
+    return {"routines": saved}
+
+
+@app.post("/api/routines/run")
+def routines_run(req: RoutineRun):
+    """Runs one routine (by id or name) and says how it went."""
+    result = _Routines().run(req.id)
+    if not result["ok"] and result["text"].startswith("I don't have"):
+        raise HTTPException(404, result["text"])
+    return result
+
+
+class FinderFolders(BaseModel):
+    folders: list[str] = Field(default=[], max_length=filefinder_mod.MAX_FOLDERS)
+
+
+class FinderQuery(BaseModel):
+    query: str = Field(min_length=1, max_length=300)
+
+
+class FinderOpen(BaseModel):
+    path: str = Field(min_length=1, max_length=600)
+    how: str = Field(pattern="^(open|folder|wall)$")
+
+
+@app.get("/api/finder")
+def finder_settings():
+    """The folders the file finder may look in (none until you add some), and the usual places to add with one click."""
+    return {"folders": filefinder_mod.folders(), "suggestions": filefinder_mod.suggestions()}
+
+
+@app.put("/api/finder")
+def finder_set_folders(req: FinderFolders):
+    try:
+        saved = filefinder_mod.set_folders(req.folders)
+    except filefinder_mod.FinderError as e:
+        raise HTTPException(400, str(e)) from None
+    audit.record("files", f"folders the finder may search: {len(saved)}")
+    return {"folders": saved}
+
+
+@app.post("/api/finder/search")
+def finder_search(req: FinderQuery):
+    try:
+        found = filefinder_mod.search(req.query)
+    except filefinder_mod.FinderError as e:
+        raise HTTPException(400, str(e)) from None
+    audit.record("files", f"search: {req.query[:100]}")
+    return {"text": filefinder_mod.summary(found), "event": filefinder_mod.event(req.query, found)}
+
+
+@app.post("/api/finder/voice")
+def finder_voice(req: SpokenLight):
+    """"Find the doc I edited yesterday about the budget": answered here, with no AI request. Anything else is left for the AI."""
+    result = filefinder_mod.handle_voice(req.text)
+    if result["handled"]:
+        audit.record("files", f"search: {req.text[:100]}", "ok" if result.get("ok") else "error")
+    return result
+
+
+@app.post("/api/finder/open")
+def finder_open(req: FinderOpen):
+    """Opens a found document, shows it in its folder, or puts a found picture on the wall. Only files inside the chosen folders; never a program or script."""
+    try:
+        if req.how == "open":
+            text = filefinder_mod.open_file(req.path)
+            audit.record("files", f"opened: {os.path.basename(req.path)[:80]}")
+            return {"text": text}
+        if req.how == "folder":
+            text = filefinder_mod.reveal(req.path)
+            audit.record("files", f"shown in folder: {os.path.basename(req.path)[:80]}")
+            return {"text": text}
+        pid = pictures_mod.save(filefinder_mod.image_bytes(req.path))
+        return {"text": "On the wall.", "event": pictures_mod.event(pid, os.path.splitext(os.path.basename(req.path))[0])}
+    except (filefinder_mod.FinderError, pictures_mod.PictureError) as e:
+        raise HTTPException(400, str(e)) from None
+    except OSError:
+        raise HTTPException(400, "That file could not be opened.") from None
 
 
 @app.get("/api/picture/{pid}")

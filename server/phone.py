@@ -59,7 +59,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
        "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 # Events that change the wall: the PC page performs them. Everything else useful goes to the phone itself.
-WALL_EVENTS = frozenset({"add_note", "board_edit", "widget", "holo", "timer", "picture"})
+WALL_EVENTS = frozenset({"add_note", "board_edit", "widget", "holo", "timer", "picture", "files"})
 PHONE_EVENTS = frozenset({"text", "notice", "error", "done", "step", "progress", "private", "summary", "memory"})
 
 
@@ -297,6 +297,10 @@ class RemoteCommand(BaseModel):
     key: str = Field(default="", max_length=12)
 
 
+class RoutineRun(BaseModel):
+    id: str = Field(min_length=1, max_length=60)
+
+
 class ShareRequest(BaseModel):
     what: str = Field(pattern="^(note|open)$")      # put it on the board as a note, or open the link in Chrome on the PC
     text: str = Field(min_length=1, max_length=2000)
@@ -368,6 +372,8 @@ def wall_line(ev: dict) -> str:
         return f"{'Showing' if ev.get('show') else 'Hid'} the {ev.get('name', '')} widget on the wall"
     if kind == "holo":
         return f"Showing on the wall: {str(ev.get('title', ''))[:60]}"
+    if kind == "files":
+        return f"Files shown on the wall: {str(ev.get('title', ''))[:60]}"
     if kind == "picture":
         return f"Showing the picture on the wall: {str(ev.get('title', ''))[:60]}"
     if kind == "add_note":
@@ -378,7 +384,7 @@ def wall_line(ev: dict) -> str:
 def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcast: Callable[[dict], None],
               is_locked: Callable[[], bool] = lambda: False, events: "Events | None" = None,
               on_events_connect: Callable[[], None] | None = None, apk: Path | None = None, reminder_store=None,
-              local_command: Callable[[str], dict] | None = None, remote=None) -> FastAPI:
+              local_command: Callable[[str], dict] | None = None, remote=None, routines=None) -> FastAPI:
     events = events if events is not None else Events()
     remote = remote or remote_mod.remote
     apk = apk or APK_FILE
@@ -574,6 +580,24 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
             raise HTTPException(400, str(e)) from None
         return {"ok": True}
 
+    @app.get("/routines")
+    def routines_list(authorization: str | None = Header(default=None)):
+        """The names of the routines made on the PC (the phone can only list and run them, never change them)."""
+        bearer(authorization)
+        return {"routines": routines.list() if routines else []}
+
+    @app.post("/routines/run")
+    def routines_run(req: RoutineRun, authorization: str | None = Header(default=None)):
+        token = bearer(authorization)
+        if is_locked():
+            raise HTTPException(423, "The privacy screen is on.")
+        if routines is None:
+            raise HTTPException(404, "There are no routines.")
+        if not phones.allow_chat(token):
+            raise HTTPException(429, "Slow down a little.")
+        audit.record("phone", f"routine run: {req.id[:40]}")
+        return routines.run(req.id)
+
     @app.post("/share")
     def share(req: ShareRequest, authorization: str | None = Header(default=None)):
         """Text or a link shared from the phone: a note on the board, or (for a web address) opened in Chrome on the PC with the usual limits."""
@@ -681,7 +705,7 @@ class PhoneService:
         return f"{'https' if self.tls else 'http'}://{ip}:{self.port}"
 
     def start(self, chat_turn, broadcast, is_locked, port: int = 8443, tls: bool = True, host: str = "0.0.0.0", on_events_connect=None, apk: Path | None = None,
-              local_command=None, remote=None) -> None:
+              local_command=None, remote=None, routines=None) -> None:
         import uvicorn
         self.ip, self.port, self.tls, self.error = lan_ip(), port, tls, ""
         try:
@@ -689,7 +713,7 @@ class PhoneService:
             if tls:
                 cert, key = ensure_cert(self.ip)
                 kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
-            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store, local_command, remote)
+            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store, local_command, remote, routines)
             self.server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False, **kwargs))
         except Exception as e:  # noqa: BLE001 - a phone door that can't start must never stop JARVIS starting
             self.error = f"{e.__class__.__name__}: {e}"

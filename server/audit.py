@@ -20,7 +20,7 @@ LOG_FILE = store.STATE / "logs" / "activity.log"
 MAX_BYTES = 2_000_000
 _lock = threading.Lock()
 
-PRIVATE_TOOLS = frozenset({"gmail_search", "gmail_read", "calendar_events", "discord_channels", "discord_read", "read_file", "list_files",
+PRIVATE_TOOLS = frozenset({"gmail_search", "gmail_read", "calendar_events", "discord_channels", "discord_read", "read_file", "list_files", "find_files",
                            "gmail_draft_reply", "calendar_add_event", "discord_send"})
 
 
@@ -56,7 +56,7 @@ def recent(limit: int = 100) -> list[dict]:
 def describe(name: str, args: dict) -> str:
     """A short, safe description of a tool call for the log (what was asked for, never the answer)."""
     key = {
-        "web_search": "query", "fetch_url": "url", "open_url": "url", "read_file": "path", "gmail_search": "query", "gmail_read": "id",
+        "web_search": "query", "fetch_url": "url", "open_url": "url", "read_file": "path", "find_files": "query", "gmail_search": "query", "gmail_read": "id",
         "discord_read": "channel", "gmail_draft_reply": "id", "calendar_add_event": "title", "discord_send": "channel", "recall": "query", "remember": "fact", "forget": "id", "update_memory": "id",
     }.get(name)
     if key:

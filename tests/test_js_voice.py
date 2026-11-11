@@ -73,3 +73,16 @@ class FindMyPhoneVoice(unittest.TestCase):
         run = subprocess.run(["node", "tests/js/phonelink.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertIn("ok   ", run.stdout)
+
+
+@unittest.skipUnless(shutil.which("node"), "Node isn't installed, so the browser-side checks can't run")
+class RoutinesAndFiles(unittest.TestCase):
+    def test_routine_phrases_agree_with_the_pc(self):
+        run = subprocess.run(["node", "tests/js/routines.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)
+
+    def test_the_files_card_shows_names_as_text_only(self):
+        run = subprocess.run(["node", "tests/js/files.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)

@@ -21,6 +21,8 @@ import { Sounds } from './sounds.js';
 import { Boot } from './boot.js';
 import { Holo } from './holo.js';
 import { Picture } from './picture.js';
+import { Files, FinderFolders } from './files.js';
+import { Routines } from './routines.js';
 import { News } from './news.js';
 import { ShowOff } from './showoff.js';
 import { Ambient } from './ambient.js';
@@ -236,6 +238,17 @@ const pictureUI = new Picture({
 });
 widgets.register({ id: 'picture', title: 'Picture', icon: '▣', blurb: 'A photo on the wall: ask JARVIS to show you a picture of something, or share one from your phone',
   el: $('picture'), onShow: () => pictureUI.onShow(), onHide: () => pictureUI.onHide() });
+const filesUI = new Files({ el: $('files'), speak: (t) => voice.speak(t), show: (ev) => chat.onFiles(ev), showPicture: (ev) => chat.onPicture(ev) });
+widgets.register({ id: 'files', title: 'Files', icon: '🗂', blurb: 'What JARVIS found when you asked it to find a file (only in the folders you chose)', el: $('files') });
+chat.onFiles = (ev) => {
+  if (!filesUI.show(ev)) return;
+  widgets.set('files', true, false);       // not remembered: a result card shouldn't come back after a restart
+  sounds.play('holo');
+  ambient.poke();
+};
+const finderFolders = new FinderFolders({ root: $('status-menu') });
+const routinesUI = new Routines({ root: $("status-menu"), speak: (t) => voice.speak(t) });
+routinesUI.refresh();
 chat.onPicture = (ev) => {
   if (!pictureUI.show(ev)) return;
   widgets.set('picture', true, false);     // not remembered: a "show me" card shouldn't come back after a restart
@@ -266,6 +279,7 @@ lightsUI.fallback = (command) => { if (!chat.busy) chat.ask(command, { speak: tr
 const appsUI = new Apps({ speak: (t) => voice.speak(t) });
 appsUI.fallback = lightsUI.fallback;
 pictureUI.fallback = lightsUI.fallback;
+filesUI.fallback = lightsUI.fallback;
 const musicUI = new Music({ el: $('music'), speak: (t) => voice.speak(t), toast });
 widgets.register({ id: 'music', title: 'Music', icon: '🎵', blurb: 'Play YouTube Music on your speakers',
   el: $('music'), onShow: () => musicUI.onShow(), onHide: () => musicUI.onHide() });
@@ -323,7 +337,7 @@ pen.onPhoneEvent = (ev) => { ambient.poke(); chat.applyRemote(ev); };
 pen.onCommand = (text) => { ambient.poke(); showoff.handleVoice(text); };
 pen.onWakeCommand = (text) => { ambient.poke(); voice.heardCommand(text); };
 const phoneLink = new PhoneLink({ root: $('status-menu'), fit: () => {} });
-status.onOpen = () => phoneLink.refresh();
+status.onOpen = () => { phoneLink.refresh(); finderFolders.refresh(); routinesUI.refresh(); };
 // "Claude has finished in JARVIS": announced by the Claude Code hook (see README, "Claude Code alerts").
 pen.onNotify = (m) => {
   ambient.poke();
@@ -380,7 +394,7 @@ const privacy = new Privacy({
   onUnlocked: () => { board.sync(); status.poll(); },
 });
 window.jarvis.privacy = privacy;
-voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
+voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || routinesUI.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || filesUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
 chat.onTyped = (text) => voice.special(text);       // typing "show off", "lights off"... in the chat box works like saying it
 $('privacy-lock').addEventListener('click', () => privacy.lock());
 $('privacy-setcode').addEventListener('click', () => {

@@ -41,6 +41,11 @@ GROUPS: dict[str, tuple[frozenset, re.Pattern, tuple[str, ...]]] = {
     "cards": (frozenset({"timer", "widget"}),
               re.compile(r"\b(timers?|countdown|minutes?|mins?|seconds?|alarm|stopwatch|weather|forecast|usage|tokens?|widgets?|cards?|ticker|clock|show|hide|"
                          r"remove|cancel|close)\b"), ("timer", "widget")),
+    "pictures": (frozenset({"picture"}),
+                 re.compile(r"\b(pictures?|photos?|images?|pics?|photograph\w*|wall)\b"), ("picture",)),
+    "files": (frozenset({"find_files"}),
+              re.compile(r"\b(files?|documents?|docs?|pdfs?|spreadsheets?|presentations?|slides|folders?|downloads?|find|where|locate|search|screenshots?|excel|powerpoint|invoices?|receipts?)\b"),
+              ("find_files",)),
     "reminders": (frozenset({"reminder"}),
                   re.compile(r"\b(remind\w*|alarm|wake me|forget|tonight|tomorrow|later|every|daily|weekly|at \d|in \d+ ?(?:min|hour|day)\w*)\b"), ()),
     "code": (frozenset({"run_python"}),

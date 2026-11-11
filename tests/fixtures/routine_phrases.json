@@ -1,0 +1,26 @@
+{
+  "normalize": [
+    ["Movie night", "movie night"],
+    ["Jarvis, start the Movie Night routine please", "movie night"],
+    ["hey jarvis run movie night", "movie night"],
+    ["it's movie night", "movie night"],
+    ["Time for movie night!", "movie night"],
+    ["activate goodnight mode", "goodnight"],
+    ["Let's do focus", "focus"],
+    ["go to focus mode", "focus"],
+    ["start my morning routine", "morning"],
+    ["  GOODNIGHT  ", "goodnight"],
+    ["", ""],
+    ["Do homework", "homework"],
+    ["turn the lights off", "turn the lights off"]
+  ],
+  "plain": [
+    ["Movie night", "movie night"],
+    ["Jarvis, start the movie", "start the movie"],
+    ["hey jarvis, film time please", "film time"],
+    ["It's film time!", "its film time"],
+    ["start the movie", "start the movie"],
+    ["  Film   Time ", "film time"],
+    ["", ""]
+  ]
+}
