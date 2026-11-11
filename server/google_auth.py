@@ -12,6 +12,7 @@ import base64
 import hashlib
 import http.server
 import secrets
+import sys
 import threading
 import time
 import urllib.parse
@@ -124,8 +125,10 @@ class _Catcher(http.server.BaseHTTPRequestHandler):
         pass
 
 
-def authorize(open_browser=webbrowser.open, timeout: float = 600.0, client=None, write: bool = False, login_hint: str | None = None) -> None:
-    """Runs the whole sign-in: opens the browser, waits for Google's answer, saves the refresh token."""
+def authorize(open_browser=webbrowser.open, timeout: float = 600.0, client=None, write: bool = False, login_hint: str | None = None, read_line=None) -> None:
+    """Runs the whole sign-in: opens the browser, waits for Google's answer, saves the refresh token.
+    Google normally sends its answer to the little web server below. If the browser cannot reach it (a firewall, a proxy, a closed window), the whole address
+    from the browser's address bar can be pasted into this window instead: it carries the same answer, and is checked the same way."""
     info = client_info()
     verifier, challenge = pkce_pair()
     state = secrets.token_urlsafe(16)
@@ -135,12 +138,36 @@ def authorize(open_browser=webbrowser.open, timeout: float = 600.0, client=None,
     redirect = f"http://127.0.0.1:{server.server_address[1]}"
     url = auth_url(info, redirect, state, challenge, write, login_hint)
     print("Opening Google's sign-in page. If nothing opens, paste this address into your browser:\n" + url, flush=True)
+    print("\nFinish the sign-in in the browser (choose your account, Advanced > Continue, then Allow). Do not close this window: it waits up to ten minutes.", flush=True)
+    print("If, after Allow, the browser says it cannot reach 127.0.0.1 (or you never see \"JARVIS is connected to Google\"), copy the WHOLE address from the browser's\n"
+          "address bar, paste it here and press Enter.", flush=True)
+
+    def pasted() -> None:
+        """Reads an address pasted into this window and takes Google's answer from it."""
+        try:
+            while server.result is None:
+                line = (read_line or sys.stdin.readline)()
+                if not line:
+                    return
+                text = line.strip()
+                query = urllib.parse.urlparse(text).query or (text.split("?", 1)[1] if "?" in text else text)
+                params = dict(urllib.parse.parse_qsl(query))
+                if "code" in params or "error" in params:
+                    server.result = params
+                    return
+                print("That did not look like the address with ?code=... in it. Copy it again from the browser's address bar.", flush=True)
+        except (OSError, ValueError):
+            return
+
+    threading.Thread(target=pasted, daemon=True).start()
     open_browser(url)
     deadline = time.time() + timeout
     while server.result is None and time.time() < deadline:
         server.handle_request()
     server.server_close()
     result = server.result
+    if result:
+        print("Google answered. Finishing the sign-in...", flush=True)
     if not result:
         raise GoogleAuthError("No answer from Google within a few minutes. Run it again.")
     if result.get("error"):

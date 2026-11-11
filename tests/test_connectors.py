@@ -106,6 +106,33 @@ class GoogleSignIn(unittest.TestCase):
                                   timeout=10, client=client({}))
         self.assertIn("didn't match", str(cm.exception))
 
+    def test_the_address_from_the_browser_can_be_pasted_when_the_browser_cannot_reach_this_pc(self):
+        self.with_files(self.CLIENT)
+        import urllib.parse
+        seen = {}
+
+        def browser(url):
+            seen["state"] = dict(urllib.parse.parse_qsl(url.split("?", 1)[1]))["state"]
+
+        def pasted():
+            while "state" not in seen:
+                __import__("time").sleep(0.01)
+            return f"http://127.0.0.1:61392/?state={seen['state']}&code=abc&scope=x\n"
+
+        c = client({"/token": lambda r: httpx.Response(200, json={"access_token": "A", "refresh_token": "R", "expires_in": 3600, "scope": "s"}),
+                    "/profile": {"emailAddress": "me@example.com"}})
+        google_auth.authorize(open_browser=browser, timeout=10, client=c, read_line=pasted)
+        self.assertTrue(google_auth.connected())
+        self.assertEqual(google_auth.load_token()["email"], "me@example.com")
+
+    def test_a_pasted_address_with_the_wrong_state_is_refused_like_any_other_answer(self):
+        self.with_files(self.CLIENT)
+        lines = iter(["not an address\n", "http://127.0.0.1:61392/?state=WRONG&code=abc\n"])
+        with self.assertRaises(google_auth.GoogleAuthError) as cm, mock.patch("builtins.print"):
+            google_auth.authorize(open_browser=lambda url: None, timeout=10, client=client({}), read_line=lambda: next(lines, ""))
+        self.assertIn("didn't match", str(cm.exception))
+        self.assertFalse(google_auth.connected())
+
 
 class Calendar(unittest.TestCase):
     def setUp(self):
