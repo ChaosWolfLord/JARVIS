@@ -43,8 +43,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * JARVIS Home: the projector's home screen. A clock, a row of pinned apps (JARVIS first) and every other app below it,
- * all reachable with the remote's arrow keys and OK. Long-press OK (or press Menu) on an app for pin, hide, app info and uninstall.
+ * JARVIS Home: the projector's home screen. A clock, a row of pinned buttons (HDMI first) and every other app below it,
+ * all reachable with the remote's arrow keys and OK. Long-press OK on a tile for pin, hide, app info, uninstall and the power-on start.
+ * A short welcome shows once each time the projector is switched on.
  */
 public class HomeActivity extends Activity {
     // Two buttons that are not apps: HDMI (shows whatever is plugged into the projector's HDMI socket) and USB (the file manager, which lists a plugged-in drive).
@@ -73,6 +74,8 @@ public class HomeActivity extends Activity {
     }
 
     private String lastFocus;    // which app was selected when the screen was released, so it can be selected again
+    private FrameLayout root;
+    private Welcome welcome;     // the short welcome, only while it is showing
     private SharedPreferences prefs;
     private float density;
     private LinearLayout pinnedRow;
@@ -92,7 +95,7 @@ public class HomeActivity extends Activity {
         prefs = getSharedPreferences("home", MODE_PRIVATE);
         density = getResources().getDisplayMetrics().density;
 
-        FrameLayout root = new FrameLayout(this);
+        root = new FrameLayout(this);
         root.addView(new Backdrop(this), new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout page = new LinearLayout(this);
@@ -366,6 +369,9 @@ public class HomeActivity extends Activity {
                 });
             }
         }
+        labels.add(!Settings.canDrawOverlays(this) ? "Start after power-on: set up..."
+                : prefs.getBoolean(BootReceiver.PREF_ENABLED, true) ? "Start after power-on: on (press OK to turn off)" : "Start after power-on: off (press OK to turn on)");
+        actions.add(this::bootStartDialog);
         labels.add("Hidden apps...");
         actions.add(this::hiddenDialog);
         labels.add("Reset pinned apps");
@@ -403,6 +409,31 @@ public class HomeActivity extends Activity {
                 .show();
     }
 
+    // ---- starting by itself after power-on ----------------------------------------------------------------------------
+
+    /** The projector's firmware opens its own home screen at power-on; this lets JARVIS Home bring itself forward a few seconds later (see BootReceiver). */
+    private void bootStartDialog() {
+        if (Settings.canDrawOverlays(this)) {
+            boolean on = !prefs.getBoolean(BootReceiver.PREF_ENABLED, true);
+            prefs.edit().putBoolean(BootReceiver.PREF_ENABLED, on).apply();
+            Toast.makeText(this, on ? "JARVIS Home will start itself after power-on" : "JARVIS Home will no longer start itself", Toast.LENGTH_LONG).show();
+            return;
+        }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Start after power-on")
+                .setMessage("The projector opens its own home screen when it is switched on. To bring JARVIS Home forward a few seconds later, Android needs you to allow "
+                        + "\"Display over other apps\" for JARVIS Home. The next screen has the switch.")
+                .setPositiveButton("Open settings", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } catch (ActivityNotFoundException | SecurityException e) {
+                        Toast.makeText(this, "This projector has no such screen", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Later", null)
+                .show();
+    }
+
     // ---- the remote ----------------------------------------------------------------------------------------------
 
     @Override
@@ -436,9 +467,33 @@ public class HomeActivity extends Activity {
         filter.addAction(Intent.ACTION_PACKAGE_ADDED);
         filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
         filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        filter.addAction(Intent.ACTION_PACKAGE_CHANGED);             // an app was disabled or enabled
         filter.addDataScheme("package");
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(packagesChanged, filter, Context.RECEIVER_EXPORTED);
         else registerReceiver(packagesChanged, filter);
+        maybeWelcome();
+    }
+
+    /** The welcome shows once per power-on: the system counts boots, so the number it holds tells whether this one has had its welcome yet. */
+    private void maybeWelcome() {
+        int boot = Settings.Global.getInt(getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+        if (welcome != null || boot == prefs.getInt("welcomed_boot", Integer.MIN_VALUE)) return;
+        prefs.edit().putInt("welcomed_boot", boot).apply();
+        welcome = new Welcome(this, density, () -> {
+            if (welcome != null) root.removeView(welcome);
+            welcome = null;
+        });
+        root.addView(welcome, new FrameLayout.LayoutParams(-1, -1));
+        welcome.play();
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (welcome != null) {                                       // any button ends the welcome; that press is not passed on
+            if (event.getAction() == KeyEvent.ACTION_DOWN) welcome.skip();
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     @Override
@@ -458,6 +513,11 @@ public class HomeActivity extends Activity {
      *  It is rebuilt (a few milliseconds) when you come back. */
     private void release() {
         if (getCurrentFocus() instanceof Tile) lastFocus = ((Tile) getCurrentFocus()).key;
+        if (welcome != null) {
+            welcome.animate().cancel();
+            root.removeView(welcome);
+            welcome = null;
+        }
         pinnedRow.removeAllViews();
         grid.removeAllViews();
         everyApp = new ArrayList<>();
