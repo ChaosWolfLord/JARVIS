@@ -58,6 +58,7 @@ AMBIGUOUS = frozenset({"jervis"})            # also what "Gervais" sounds like, 
 COOLDOWN = 4.0   # seconds before the same word can wake it again
 PREROLL = 8      # blocks (a quarter of a second each) of audio kept from before the name was recognised, so the command is heard from its first word
 FOLLOW_UP = 8.0  # seconds after the name that a command is waited for
+REPLY_WAIT = 10.0   # seconds an answer is waited for after JARVIS asked a question (no name needed)
 LINGER = 0.9     # after the first words of a command, this long without more speech means it is finished
 MAX_COMMAND = 15.0
 FILLERS = frozenset({"hey", "ok", "okay", "hi", "yo"})
@@ -205,14 +206,27 @@ class Pipeline:
         self.commands = commands and on_command is not None
         self.last_text = ""
         self.last_wake = 0.0
+        self.reply_pending = False                      # a page asked to listen for the answer to a question (see listen_for_reply)
+        self.reply_capture = False                      # the capture running now is for such an answer
+
+    def listen_for_reply(self) -> None:
+        """JARVIS just asked a question: the next sentence is taken as a command without the name. Called from another thread; the next block starts it."""
+        self.reply_pending = True
 
     def feed(self, data: bytes, now: float) -> None:
         self.recent.append(data)
+        if self.reply_pending:
+            self.reply_pending = False
+            if self.commands and self.capture is None:
+                self.capture = CommandCapture(self.vosk.KaldiRecognizer(self.model, SAMPLE_RATE), [], now, follow_up=REPLY_WAIT)
+                self.reply_capture = True
         if self.capture is not None:
             spoken = self.capture.feed(data, now)
             if spoken is not None:
                 self.capture = None
-                self.on_command(spoken)
+                was_reply, self.reply_capture = self.reply_capture, False
+                if spoken or not was_reply:            # staying quiet after a question is not an error: nothing is said about it
+                    self.on_command(spoken)
         final, conf = self.rec.AcceptWaveform(data), 0.0
         if final:
             result = json.loads(self.rec.Result())
@@ -258,6 +272,7 @@ class WakeWord:
         self.last_text = ""              # the last words it recognised, including look-alikes
         self.last_wake = 0.0
         self.last_command = ""
+        self.pipe: Pipeline | None = None     # the listening logic while the microphone is open
 
     # ---- who wants the microphone ----
     def vote(self, client: str, on: bool) -> None:
@@ -267,6 +282,15 @@ class WakeWord:
             if len(self.clients) > 32:                                       # old pages that are gone
                 for key in sorted(self.clients, key=lambda k: self.clients[k][1])[:16]:
                     self.clients.pop(key, None)
+
+    def listen_for_reply(self) -> bool:
+        """A page says JARVIS just asked a question: the next sentence is a command without the name. False when the microphone is not open
+        (voice is off, or commands are heard by the browser instead)."""
+        pipe = self.pipe
+        if pipe is None or not self.listening or not self.commands or not self.wanted():
+            return False
+        pipe.listen_for_reply()
+        return True
 
     def wanted(self) -> bool:
         now = time.monotonic()
@@ -321,6 +345,7 @@ class WakeWord:
         audio: queue.Queue[bytes] = queue.Queue(maxsize=50)
         pipe = Pipeline(model, vosk, self._woke, self._said, self.commands)
         self.detector = pipe.detector
+        self.pipe = pipe
 
         def take(indata, frames, t, status):  # noqa: ARG001 - sounddevice's signature
             try:
@@ -347,6 +372,7 @@ class WakeWord:
                 if pipe.last_text:
                     self.last_text = pipe.last_text
         self.listening = False
+        self.pipe = None
 
     def _woke(self) -> None:
         self.last_wake = time.time()

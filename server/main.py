@@ -295,6 +295,13 @@ def wake_vote(req: WakeVote):
     return {"running": False, "listening": False, "error": ""}
 
 
+@app.post("/api/wake/listen")
+def wake_listen():
+    """JARVIS just asked a question: the PC's microphone takes the next sentence as the answer, without the name. Only while voice is on here."""
+    ok = bool(wake.service and wake.service.listen_for_reply())
+    return {"listening": ok}
+
+
 def _light_view() -> dict:
     reg = lights_mod.lights
     return {"available": reg.available(), "cloud": bool(reg.cloud), "error": reg.error, "scanned": int(reg.scanned),

@@ -6,6 +6,8 @@
 const WAKE = /^\W*(?:(?:hey|ok|okay)\W+)?(?:jarvis|jarvas|jarvus|jarves)\b\W*(.*)$/is;
 const STOP = /^(stop|cancel|quiet|be quiet|shut up|enough|never mind)\b/i;
 const FOLLOW_UP_MS = 8000; // how long after a bare "Jarvis" the next sentence counts as the command
+const REPLY_MS = 10000;    // after JARVIS asks a question: how long your answer is waited for, without saying "Jarvis" first
+const REPLY_DELAY_MS = 800;   // ...starting this long after it stops talking, so its own voice dying away in the room is not taken for your answer
 const MAX_SPOKEN_CHARS = 900;
 const SETTINGS_KEY = 'jarvis.voice';
 const ON_KEY = 'jarvis.voice.on';      // '1' / '0': whether you last left the microphone on or off
@@ -33,6 +35,14 @@ export function parseWake(text) {
  *  the name over an answer interrupts it, cut itself off). So when it speaks, its name is spelled out letter by letter, which can't match. */
 export function maskName(text) {
   return String(text).replace(/\b(?:jarvis|jarvas|jarvus|jarves|jervis)\b/gi, 'J A R V I S');
+}
+
+/** Did what was said end by asking you something? ("Want me to dim the lights?") Only the last sentence counts, so a question in the middle of an
+ *  answer, or a long answer that merely mentions one, does not make JARVIS wait for a reply. */
+export function asksQuestion(text) {
+  const sentences = String(text || '').trim().replace(/["'”’)\]]+$/, '').match(/[^.!?]+[.!?]*/g);     // (a closing quote after the question mark does not matter)
+  const last = (sentences ? sentences[sentences.length - 1] : '').trim();
+  return last.length >= 5 && last.length <= 220 && last.endsWith('?');
 }
 
 /** Markdown reply -> something pleasant to hear. */
@@ -78,7 +88,9 @@ export class Voice {
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     this.supported = Boolean(SR) && 'speechSynthesis' in window;
-    chat.onReply = (text) => this.speak(text);
+    chat.onReply = (text) => this.speak(text, { reply: true });          // JARVIS's own answers: one that ends in a question is followed by listening for your reply
+    this.expectReply = false;   // the answer being spoken ended with a question
+    this.replyTimer = null;
     button.addEventListener('click', () => this.toggle());
     if (!this.supported) {
       button.title = 'Voice needs Chrome or Edge';
@@ -119,6 +131,7 @@ export class Voice {
   /** The PC heard "Jarvis" (offline). Play the listening sound; the command follows from the PC (or, without that, from the browser). */
   wake() {
     if (!this.supported || !this.enabled || !this.offline) return;         // voice is off here: nothing to do (the PC's microphone is closed then, anyway)
+    clearTimeout(this.replyTimer);                               // the name was said: no need for the "listening for your answer" cue as well
     if (this.speaking || this.chat.busy) this.interrupt();       // saying "Jarvis" over an answer cuts it off, then JARVIS listens
     this.cue();
     this.awaitUntil = Date.now() + FOLLOW_UP_MS + 1500;
@@ -316,11 +329,12 @@ export class Voice {
     this.pickVoice();
   }
 
-  speak(text) {
+  speak(text, { reply = false } = {}) {
     if (!this.supported || window.jarvis?.privacy?.locked) return;     // nothing is spoken while the privacy screen is up
     const clean = maskName(stripForSpeech(text));
     if (!clean) return;
     this.cancelSpeech();
+    this.expectReply = reply && this.enabled && asksQuestion(clean);   // judged on what is really spoken (a long answer is cut short)
     // Short sentence-sized chunks: some browsers cut off long utterances.
     const chunks = clean.match(/[^.!?]+[.!?]*\s*/g) || [clean];
     const mine = ++this.generation; // a cancelled older utterance must not end this one
@@ -333,7 +347,7 @@ export class Voice {
       u.pitch = this.settings.pitch;
       u.rate = this.settings.rate;
       if (i === chunks.length - 1) {
-        u.onend = u.onerror = () => { if (mine === this.generation) this.doneSpeaking(); };
+        u.onend = u.onerror = () => { if (mine === this.generation) this.doneSpeaking(true); };
       }
       return u;
     });
@@ -347,7 +361,8 @@ export class Voice {
       if (mine !== this.generation) return;
       const elapsed = Date.now() - startedAt;
       const idle = !speechSynthesis.speaking && !speechSynthesis.pending;
-      if ((idle && elapsed > 800) || elapsed > maxMs) this.cancelSpeech();
+      if (idle && elapsed > 800) { speechSynthesis.cancel(); this.doneSpeaking(true); }       // it finished, but the browser never said so
+      else if (elapsed > maxMs) this.cancelSpeech();
     }, 250);
   }
 
@@ -357,12 +372,36 @@ export class Voice {
     this.doneSpeaking();
   }
 
-  doneSpeaking() {
+  /** `natural`: it said everything it meant to (not cut off by you, by Stop, or by a newer answer). If that answer asked a question, listen for the reply. */
+  doneSpeaking(natural = false) {
     clearInterval(this.speechTimer);
+    clearTimeout(this.replyTimer);
     this.utterances = [];
     this.speaking = false;
     this.ignoreUntil = Date.now() + 600; // let the room echo die down
     this.button.classList.remove('talking');
+    const ask = natural && this.expectReply && this.enabled;
+    this.expectReply = false;
+    if (ask) this.replyTimer = setTimeout(() => this.listenForReply(), REPLY_DELAY_MS);
+  }
+
+  /** JARVIS just asked something: for a few seconds the next sentence you say is the answer, with no need to say "Jarvis" first. */
+  listenForReply() {
+    if (!this.supported || !this.enabled || this.speaking || this.chat.busy) return;
+    this.cue();
+    this.awaitUntil = Date.now() + REPLY_MS;
+    this.show('Listening for your answer…', REPLY_MS);
+    if (!this.offline) return;                                   // the browser's recognizer is already listening: the next sentence counts as the command
+    if (this.offlineCommands) { this.syncReply(); return; }      // the PC listens for it (and says nothing if you stay quiet)
+    this.windowUntil = this.awaitUntil + 1500;
+    this.beginRecognition();
+    clearTimeout(this.windowTimer);
+    this.windowTimer = setTimeout(() => this.closeWindow(), this.windowUntil - Date.now() + 200);
+  }
+
+  /** Asks the PC's microphone to treat the next sentence as a command even though the name was not said. */
+  syncReply() {
+    fetch('/api/wake/listen', { method: 'POST' }).catch(() => {});
   }
 
   // ---- feedback --------------------------------------------------------

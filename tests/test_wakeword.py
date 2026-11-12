@@ -425,6 +425,79 @@ class WholePipeline(unittest.TestCase):
         self.assertEqual(events, ["open discord"])
 
 
+class AnswerToAQuestion(unittest.TestCase):
+    """JARVIS asked something: the next sentence is the answer, with no need to say the name first."""
+
+    def pipeline(self, command_script, commands=True):
+        whole = WholePipeline()
+        vosk, made = whole.fake_vosk([("", "")] * 80, command_script)
+        events = []
+        pipe = wakeword.Pipeline(object(), vosk, lambda: events.append("wake"), (lambda text: events.append(("command", text))) if commands else None, commands)
+        return pipe, events, made
+
+    def feed(self, pipe, blocks, start=0):
+        for i in range(start, start + blocks):
+            pipe.feed(b"x" * 8000, i * 0.25)
+
+    def test_the_next_sentence_is_the_command_without_the_name(self):
+        pipe, events, made = self.pipeline([("partial", "yes"), ("final", "yes please do that")] + [("", "")] * 10)
+        self.feed(pipe, 2)
+        self.assertEqual(made, [])                                                          # nothing is being captured until it is asked for
+        pipe.listen_for_reply()
+        self.feed(pipe, 12, 2)
+        self.assertEqual(events, [("command", "yes please do that")])
+        self.assertEqual(len(made), 1)
+
+    def test_staying_quiet_after_a_question_says_nothing(self):
+        pipe, events, _ = self.pipeline([("", "")] * 80)
+        pipe.listen_for_reply()
+        self.feed(pipe, int((wakeword.REPLY_WAIT + 3) / 0.25))
+        self.assertEqual(events, [])                                                        # no "I didn't catch a command"
+        self.assertIsNone(pipe.capture)                                                     # and it stopped waiting
+
+    def test_it_waits_the_reply_time_not_the_shorter_wait_after_the_name(self):
+        pipe, events, _ = self.pipeline([("", "")] * 5 + [("final", "no thanks")] + [("", "")] * 20)
+        pipe.listen_for_reply()
+        self.feed(pipe, 6)                                                                  # the answer comes after about a second and a half
+        self.assertIsNotNone(pipe.capture)
+        self.feed(pipe, 14, 6)
+        self.assertEqual(events, [("command", "no thanks")])
+
+    def test_without_command_capture_nothing_starts(self):
+        pipe, events, made = self.pipeline([("final", "yes")] * 5, commands=False)
+        pipe.listen_for_reply()
+        self.feed(pipe, 6)
+        self.assertEqual((events, made), ([], []))
+
+    def test_a_name_that_is_heard_during_the_wait_still_works(self):
+        pipe, events, _ = self.pipeline([("final", "jarvis turn off the lights")] + [("", "")] * 10)
+        pipe.listen_for_reply()
+        self.feed(pipe, 8)
+        self.assertEqual(events, [("command", "turn off the lights")])
+
+    def test_the_listener_only_accepts_the_request_while_the_microphone_is_open(self):
+        w = wakeword.WakeWord(lambda: None, on_command=lambda t: None)
+        self.assertFalse(w.listen_for_reply())                                              # not listening
+        pipe, _, _ = self.pipeline([("", "")] * 5)
+        w.pipe, w.listening = pipe, True
+        w.vote("wall", True)
+        self.assertTrue(w.listen_for_reply())
+        self.assertTrue(pipe.reply_pending)
+        w.vote("wall", False)
+        pipe.reply_pending = False
+        self.assertFalse(w.listen_for_reply())                                              # voice was switched off
+        self.assertFalse(pipe.reply_pending)
+
+    def test_the_route(self):
+        from server import main
+        with mock.patch.object(main.wake, "service", None):
+            self.assertEqual(main.wake_listen(), {"listening": False})
+        w = mock.Mock()
+        w.listen_for_reply.return_value = True
+        with mock.patch.object(main.wake, "service", w):
+            self.assertEqual(main.wake_listen(), {"listening": True})
+
+
 class Route(unittest.TestCase):
     def test_a_page_switches_the_microphone_through_the_server(self):
         from server import main
