@@ -70,6 +70,25 @@ final class Share {
         return Build.VERSION.SDK_INT >= 33 ? i.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class) : (Uri) i.getParcelableExtra(Intent.EXTRA_STREAM);
     }
 
+    /**
+     * A picture taken with the phone's camera app for the "Look" button: shrunk and cleaned like a shared picture, and then offered to the page the same way
+     * (the page asks what to do with it). The copy the camera app saved in the gallery is deleted straight away, so nothing is left behind.
+     */
+    static void fromCamera(Context c, Uri uri, Runnable done) {
+        final Context app = c.getApplicationContext();
+        new Thread(() -> {
+            boolean made = false;
+            try {
+                made = shrink(app, uri);
+                if (made) pending = new JSONObject().put("kind", "image").toString();
+            } catch (Exception ignored) {
+            } finally {
+                try { app.getContentResolver().delete(uri, null, null); } catch (Exception ignored) { }
+            }
+            if (made) done.run();
+        }, "look").start();
+    }
+
     /** What the page asks for: the shared item ({kind, text?}) once, or "" when there is nothing. */
     static String take() {
         String p = pending;

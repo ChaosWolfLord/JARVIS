@@ -76,6 +76,38 @@
           </div>
         </details>
 
+        <details class="sd-sec" id="sec-nudges">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg><span><b>Speaks first</b><small>Heads-ups before a meeting, new important mail</small></span></summary>
+          <div class="sd-inner">
+            <label class="status-field"><input type="checkbox" id="nudge-on"> Let JARVIS speak first</label>
+            <label class="status-field"><input type="checkbox" id="nudge-calendar"> Before a calendar event, <input id="nudge-minutes" type="number" min="1" max="60" step="1" aria-label="Minutes before an event" style="width:4.5em"> minutes ahead</label>
+            <label class="status-field"><input type="checkbox" id="nudge-mail"> When important mail arrives (who it is from only)</label>
+            <label class="status-field"><input type="checkbox" id="nudge-speak"> Say it out loud (otherwise only the bubble shows)</label>
+            <label class="status-field"><input type="checkbox" id="nudge-phone"> Also notify my phone</label>
+            <label class="status-field">Quiet from <input id="nudge-from" type="time" aria-label="Quiet hours start"> to <input id="nudge-to" type="time" aria-label="Quiet hours end"></label>
+            <div class="status-actions">
+              <button type="button" id="nudge-hour">Quiet for 1 hour</button>
+              <button type="button" id="nudge-resume">Resume</button>
+            </div>
+            <p class="wm-hint">Needs Google connected (<i>connect.bat google</i>). JARVIS only reads who important mail is from, never its subject or text, and never sends anything to an AI for this. It never repeats a heads-up, stays quiet in quiet hours and while the privacy screen is on. Say “Jarvis, don't interrupt me for an hour” to snooze it.</p>
+            <p id="nudge-note" class="wm-hint" role="status"></p>
+          </div>
+        </details>
+
+        <details class="sd-sec" id="sec-vision">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg><span><b>Vision</b><small>Ask “what is this?” through a camera</small></span></summary>
+          <div class="sd-inner">
+            <label class="status-field"><input type="checkbox" id="vision-on"> Let JARVIS look through a camera when I ask</label>
+            <label class="status-field">PC camera <select id="vision-device"><option value="">The browser’s default camera</option></select></label>
+            <div class="status-actions">
+              <button type="button" id="vision-find">Find cameras</button>
+              <button type="button" id="vision-test">Test: what do you see?</button>
+            </div>
+            <p class="wm-hint">Say “Jarvis, what is this?”, “what am I holding?” or “read this” while showing it to the camera. It looks only when you ask: the camera opens for about a second and the picture is not saved. The picture is sent to the AI service JARVIS uses for your questions (Google's Gemini for the free models), so it can be seen by that service: look at what you show it. On your phone, the camera button in the app does the same. JARVIS will not say who a person is from their face.</p>
+            <p id="vision-note" class="wm-hint" role="status"></p>
+          </div>
+        </details>
+
         <details class="sd-sec" id="sec-files">
           <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg><span><b>Files JARVIS may search</b><small>For “find the doc I edited yesterday”</small></span></summary>
           <div class="sd-inner">

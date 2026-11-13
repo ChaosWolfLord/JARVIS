@@ -145,3 +145,10 @@ input.switch:focus-visible { outline: 2px solid rgba(var(--accent), 0.7); outlin
 .rrow button { flex: 1; min-height: 48px; padding: 0 6px; font-size: 14px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
 .rrow button:active { background: rgba(var(--accent), 0.25); }
 .rrow.big button { min-height: 76px; font-size: 28px; }
+
+/* the camera button and what JARVIS says about a picture */
+#cam { display: grid; place-items: center; }
+#cam[hidden] { display: none; }
+#share-question { width: 100%; padding: 12px 14px; font: inherit; font-size: 16px; color: var(--white); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; outline: none; }
+#share-question[hidden], #share-answer[hidden] { display: none; }
+#share-answer { margin: 0; padding: 10px 12px; font-size: 15px; line-height: 1.45; color: var(--white); background: rgba(var(--accent), 0.1); border: 1px solid rgba(var(--accent), 0.4); border-radius: 14px; }

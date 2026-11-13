@@ -32,7 +32,7 @@ UI_SETTINGS_FILE = STATE / "ui_settings.json"      # the page's own settings (wi
 UI_KEYS = frozenset({
     "jarvis.weather", "jarvis.widgets", "jarvis.widget.layout2", "jarvis.voice", "jarvis.warp.v1", "jarvis.ambient", "jarvis.timers",
     "jarvis.panel", "jarvis.touch", "jarvis.lights", "jarvis.usage", "jarvis.usage.measure", "jarvis.usage.source", "jarvis.alerts.seen",
-    "jarvis.sounds", "jarvis.boot", "jarvis.voice.on", "jarvis.look",
+    "jarvis.sounds", "jarvis.boot", "jarvis.voice.on", "jarvis.look", "jarvis.vision",
 })
 UI_VALUE_LIMIT = 100_000
 COOLDOWN_FILE = STATE / "cooldowns.json"

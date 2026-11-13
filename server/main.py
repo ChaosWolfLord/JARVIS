@@ -10,12 +10,13 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, filefinder as filefinder_mod, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, routines as routines_mod, runner, store, wakeword
+from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, filefinder as filefinder_mod, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, nudges as nudges_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, routines as routines_mod, runner, store, vision as vision_mod, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -64,6 +65,8 @@ async def lifespan(_app):
         )
     reminder_stop.clear()
     threading.Thread(target=reminder_loop, daemon=True, name="reminders").start()
+    if os.getenv("JARVIS_NUDGES", "1") != "0":
+        threading.Thread(target=nudge_loop, daemon=True, name="nudges").start()
     yield
     reminder_stop.set()
     phone_service.stop()
@@ -87,6 +90,24 @@ def reminder_loop() -> None:
             pass
 
 
+def nudge_loop() -> None:
+    """Every minute, asks the heads-up engine whether something needs saying, and says it (wall, phone). Nothing runs without Google connected or while the
+    privacy screen is on."""
+    from . import google_tools
+    while not reminder_stop.wait(60):
+        try:
+            if privacy.locked() or not google_tools.available():
+                continue
+            settings = nudges_mod.instance.settings()
+            for item in nudges_mod.instance.check():
+                audit.record("nudge", item["kind"])
+                tell_pages({"type": "nudge", "kind": item["kind"], "text": item["text"], "speak": settings["speak"]})
+                if settings["phone"]:
+                    phone_service.publish({"type": "push", "title": "JARVIS", "text": item["text"][:200]})
+        except Exception:  # noqa: BLE001 - a hiccup must not stop the loop
+            pass
+
+
 def on_monitor_event(event: dict, loop) -> None:
     """The health monitor found (or cleared) a problem: every page hears it, and a new one also goes to the phone."""
     asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop)
@@ -100,6 +121,11 @@ class _Wake:
 
 
 wake = _Wake()
+
+
+def google_available() -> bool:
+    from . import google_tools
+    return google_tools.available()
 
 
 def tell_pages(event: dict) -> None:
@@ -529,6 +555,54 @@ def finder_open(req: FinderOpen):
         raise HTTPException(400, str(e)) from None
     except OSError:
         raise HTTPException(400, "That file could not be opened.") from None
+
+
+class NudgeSettings(BaseModel):
+    enabled: bool | None = None
+    calendar: bool | None = None
+    minutes: int | None = Field(default=None, ge=1, le=60)
+    mail: bool | None = None
+    speak: bool | None = None
+    phone: bool | None = None
+    quiet_from: str | None = Field(default=None, max_length=5)
+    quiet_to: str | None = Field(default=None, max_length=5)
+
+
+@app.get("/api/nudges")
+def api_nudges():
+    return {**nudges_mod.instance.status(), "google": google_available()}
+
+
+@app.post("/api/nudges")
+def api_nudges_set(req: NudgeSettings):
+    nudges_mod.instance.update(req.model_dump(exclude_none=True))
+    return {**nudges_mod.instance.status(), "google": google_available()}
+
+
+@app.post("/api/nudges/snooze")
+def api_nudges_snooze(minutes: float = Query(60, ge=0, le=1440)):
+    """Quiet for a while (0 ends a snooze)."""
+    nudges_mod.instance.snooze(minutes)
+    return {**nudges_mod.instance.status(), "google": google_available()}
+
+
+@app.post("/api/nudges/voice")
+def api_nudges_voice(text: str = Query("", max_length=300)):
+    """The page heard something like "don't interrupt me for an hour": snoozes the heads-ups when that is what it was."""
+    return nudges_mod.handle_voice(text)
+
+
+@app.post("/api/look")
+async def api_look(request: Request, question: str = ""):
+    """"What is this?": the page sends one picture from the PC's webcam (the body is the JPEG) and the question; the AI model that can see answers.
+    Nothing is saved, and the camera is only ever opened by the page when you ask."""
+    try:
+        body = await vision_mod.read_body(request)
+        out = await run_in_threadpool(vision_mod.look, body, question)
+    except vision_mod.VisionError as e:
+        raise HTTPException(400, str(e)) from None
+    audit.record("vision", f"looked: {vision_mod.clean_question(question)[:80]} ({len(body) // 1024} KB, webcam)")
+    return out
 
 
 @app.get("/api/picture/{pid}")

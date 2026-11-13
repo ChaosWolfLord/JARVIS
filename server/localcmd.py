@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Callable
 
-from . import apps as apps_mod, audit, browser as browser_mod, filefinder, lights as lights_mod, music as music_mod, persona, pictures, routines as routines_mod
+from . import apps as apps_mod, audit, browser as browser_mod, filefinder, lights as lights_mod, music as music_mod, nudges, persona, pictures, routines as routines_mod
 
 _PREFIX = re.compile(r"^(?:hey )?jarvis ")
 _SHOWOFF = re.compile(r"^(?:please )?(?:(stop|end|exit|quit|cancel|disable|leave)(?: the)?|(start|begin|enter|go into|activate|enable)(?: the)?)? ?(?:show|shoe)(?:ing)?[- ]?(?:off|of|offs)(?: mode)?$")
@@ -54,6 +54,7 @@ def commands(text: str, tell_page: Callable[[dict], None] | None = None) -> dict
         return {"handled": True, "ok": True, "text": persona.line("showoff_off" if action == "off" else "showoff_on")}
 
     for kind, fn in (("lights", lights_mod.handle_voice), ("music", music_mod.handle_voice), ("browser", browser_mod.handle_voice),
+                     ("nudges", nudges.handle_voice),
                      ("files", lambda t: filefinder.handle_voice(t, tell_page)),
                      ("pictures", lambda t: pictures.handle_voice(t, tell_page)),
                      ("apps", lambda t: apps_mod.handle_voice(t) if apps_mod.available() else {"handled": False, "text": ""})):

@@ -162,6 +162,7 @@ function start() {
     $('opt-bg').checked = app.backgroundAlerts();
     showCalls();
     showFind();
+    $('cam').hidden = typeof app.takePhoto !== 'function';           // the camera button needs the app (the camera app takes the picture)
   }
   showUpdates();
   syncReminders();
@@ -834,12 +835,48 @@ function checkShare() {
   if (image) $('share-img').src = `data:image/jpeg;base64,${app.sharedImage()}`;
   $('share-text').textContent = image ? '' : String(item.text || '');
   $('share-ask').hidden = image;
+  $('share-question').hidden = !image || LOCAL;
+  $('share-question').value = '';
+  $('share-look').hidden = !image || LOCAL;
+  $('share-answer').hidden = true;
   $('share-wall').hidden = !image || LOCAL;
   $('share-note').hidden = image || LOCAL;
   $('share-open').hidden = !url || LOCAL;
   shareMessage(LOCAL ? 'Your PC isn’t reachable, so the wall isn’t available. I can still answer about it.' : '');
   if (image && LOCAL) shareMessage('Your PC isn’t reachable, so I can’t put a picture on the wall right now.');
   $('share').hidden = false;
+}
+
+/** "What is this?": the picture goes to the PC, which asks an AI model that can see, and the answer comes back here (and on the wall if that is switched on). */
+async function lookAtShared() {
+  if (!shared || shared.kind !== 'image') return;
+  const question = $('share-question').value.trim();
+  shareMessage('Looking…');
+  $('share-look').disabled = true;
+  try {
+    const bytes = Uint8Array.from(atob(app.sharedImage()), (c) => c.charCodeAt(0));
+    const res = await fetch(`/look?question=${encodeURIComponent(question)}&wall=${prefs.wall ? 'true' : 'false'}`,
+      { method: 'POST', headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${token}` }, body: bytes });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { shareMessage(data.detail || `The PC said no (${res.status}).`); return; }
+    shareMessage('');
+    $('share-answer').textContent = data.text;
+    $('share-answer').hidden = false;
+    add('user', `📷 ${question || 'What do you see?'}`);
+    add('bot', data.text);
+    readAloud(data.text);
+  } catch {
+    shareMessage('Could not reach your PC.');
+  } finally {
+    $('share-look').disabled = false;
+  }
+}
+
+/** Says an answer out loud on this phone, when "Read answers aloud" is on. */
+function readAloud(text) {
+  if (!prefs.read || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtterance(String(text).slice(0, 600)));
 }
 
 async function shareToPc(what) {
@@ -864,6 +901,9 @@ async function shareToPc(what) {
 }
 
 $('share-wall').addEventListener('click', () => shareToPc('wall'));
+$('share-look').addEventListener('click', lookAtShared);
+$('share-question').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); lookAtShared(); } });
+$('cam').addEventListener('click', () => app?.takePhoto?.());                 // the camera app takes one picture; the sheet then asks what to do with it
 $('share-note').addEventListener('click', () => shareToPc('note'));
 $('share-open').addEventListener('click', () => shareToPc('open'));
 $('share-cancel').addEventListener('click', closeShare);

@@ -8,7 +8,7 @@
 export const SYNCED = [
   'jarvis.weather', 'jarvis.widgets', 'jarvis.widget.layout2', 'jarvis.voice', 'jarvis.warp.v1', 'jarvis.ambient', 'jarvis.timers',
   'jarvis.panel', 'jarvis.touch', 'jarvis.lights', 'jarvis.usage', 'jarvis.usage.measure', 'jarvis.usage.source', 'jarvis.alerts.seen',
-  'jarvis.sounds', 'jarvis.boot', 'jarvis.voice.on', 'jarvis.look',
+  'jarvis.sounds', 'jarvis.boot', 'jarvis.voice.on', 'jarvis.look', 'jarvis.vision',
 ];
 const DELAY_MS = 400;
 

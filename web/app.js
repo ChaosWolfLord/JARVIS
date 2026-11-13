@@ -23,6 +23,8 @@ import { Holo } from './holo.js';
 import { Picture } from './picture.js';
 import { Files, FinderFolders } from './files.js';
 import { Routines } from './routines.js';
+import { Vision } from './vision.js';
+import { Nudges } from './nudges.js';
 import { News } from './news.js';
 import { ShowOff } from './showoff.js';
 import { Ambient } from './ambient.js';
@@ -272,6 +274,8 @@ chat.onFiles = (ev) => {
 };
 const finderFolders = new FinderFolders({ root: $('status-menu') });
 const routinesUI = new Routines({ root: $("status-menu"), speak: (t) => voice.speak(t) });
+const nudgesUI = new Nudges({ root: $("status-menu"), busy: () => chat.busy || voice.speaking, speak: (t) => voice.speak(t), show: (t) => showBubble(`<p><b>JARVIS</b></p><p>${plain(t)}</p>`, Math.min(40_000, 10_000 + t.length * 45)) });
+const visionUI = new Vision({ root: $("status-menu"), speak: (t) => voice.speak(t), show: (t) => showBubble(`<p>${plain(t)}</p>`, Math.min(40_000, 6000 + t.length * 45)) });
 routinesUI.refresh();
 chat.onPicture = (ev) => {
   if (!pictureUI.show(ev)) return;
@@ -304,6 +308,7 @@ const appsUI = new Apps({ speak: (t) => voice.speak(t) });
 appsUI.fallback = lightsUI.fallback;
 pictureUI.fallback = lightsUI.fallback;
 filesUI.fallback = lightsUI.fallback;
+nudgesUI.fallback = lightsUI.fallback;
 const musicUI = new Music({ el: $('music'), speak: (t) => voice.speak(t), toast });
 widgets.register({ id: 'music', title: 'Music', icon: '🎵', blurb: 'Play YouTube Music on your speakers',
   el: $('music'), onShow: () => musicUI.onShow(), onHide: () => musicUI.onHide() });
@@ -361,7 +366,7 @@ pen.onPhoneEvent = (ev) => { ambient.poke(); chat.applyRemote(ev); };
 pen.onCommand = (text) => { ambient.poke(); showoff.handleVoice(text); };
 pen.onWakeCommand = (text) => { ambient.poke(); voice.heardCommand(text); };
 const phoneLink = new PhoneLink({ root: $('status-menu'), fit: () => {} });
-status.onOpen = () => { phoneLink.refresh(); finderFolders.refresh(); routinesUI.refresh(); };
+status.onOpen = () => { phoneLink.refresh(); finderFolders.refresh(); routinesUI.refresh(); visionUI.cameras(); nudgesUI.refresh(); };
 // "Claude has finished in JARVIS": announced by the Claude Code hook (see README, "Claude Code alerts").
 pen.onNotify = (m) => {
   ambient.poke();
@@ -369,6 +374,7 @@ pen.onNotify = (m) => {
   showBubble(`<p><b>${plain(m.title)}</b></p><p>${plain(m.text)}</p>`, 15_000);
   if (m.speak) voice.speak(m.speak);
 };
+pen.onNudge = (m) => { ambient.poke(); sounds.play('ok'); nudgesUI.deliver(m); };      // JARVIS speaks first
 window.jarvis.alerts = alerts;
 // The start-up sequence plays once each time the JARVIS server starts (not on every page reload).
 const boot = new Boot({ overlay: $('boot'), sounds, speak: (t) => voice.speak(t),
@@ -418,7 +424,7 @@ const privacy = new Privacy({
   onUnlocked: () => { board.sync(); status.poll(); },
 });
 window.jarvis.privacy = privacy;
-voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || routinesUI.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || filesUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
+voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || routinesUI.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || filesUI.handleVoice(command) || nudgesUI.handleVoice(command) || visionUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
 chat.onTyped = (text) => voice.special(text);       // typing "show off", "lights off"... in the chat box works like saying it
 $('privacy-lock').addEventListener('click', () => privacy.lock());
 $('privacy-setcode').addEventListener('click', () => {

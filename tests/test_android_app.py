@@ -181,6 +181,16 @@ class ShareAndSavings(unittest.TestCase):
             self.assertIn(name, bridge_methods())
             self.assertIn(name, PHONE_JS)
 
+    def test_the_look_button_uses_the_camera_app_and_leaves_nothing_behind(self):
+        self.assertIn("takePhoto", bridge_methods())
+        self.assertIn("takePhoto", PHONE_JS)
+        manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        self.assertIn("android.media.action.IMAGE_CAPTURE", manifest)
+        self.assertNotIn("android.permission.CAMERA", manifest)           # the camera app takes the picture; JARVIS never holds the camera
+        share = self.src["Share.java"]
+        self.assertIn("static void fromCamera", share)
+        self.assertIn("getContentResolver().delete(uri", share)             # the gallery copy is deleted straight away
+
     def test_checking_for_updates_costs_no_data_when_nothing_changed(self):
         updates = self.src["Updates.java"]
         self.assertIn("If-None-Match", updates)

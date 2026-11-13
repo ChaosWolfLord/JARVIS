@@ -161,7 +161,7 @@ class StatusPanel(unittest.TestCase):
         actions = re.findall(r'data-do="(\w+)"', drawer)
         self.assertEqual(actions, ["lock", "pair", "picture"])
         sections = re.findall(r'<details class="sd-sec" id="(sec-\w+)">.*?<b>(.*?)</b><small>(.*?)</small>', INDEX, re.S)
-        self.assertEqual([s[0] for s in sections], ["sec-phone", "sec-routines", "sec-files", "sec-privacy", "sec-voice", "sec-display", "sec-board", "sec-tools"])
+        self.assertEqual([s[0] for s in sections], ["sec-phone", "sec-routines", "sec-nudges", "sec-vision", "sec-files", "sec-privacy", "sec-voice", "sec-display", "sec-board", "sec-tools"])
         for _, name, line in sections:
             self.assertTrue(name and len(line) > 10)
 

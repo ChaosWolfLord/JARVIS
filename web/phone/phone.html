@@ -117,6 +117,9 @@
     <div id="log" aria-live="polite"></div>
     <form id="composer">
       <textarea id="input" rows="1" placeholder="Or type to JARVIS…" autocomplete="off" enterkeyhint="send"></textarea>
+      <button type="button" id="cam" class="icon" aria-label="Look: take a picture and ask JARVIS about it" title="Look" hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>
+      </button>
       <button type="button" id="mic" class="icon" aria-label="Speak" title="Speak">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
       </button>
@@ -130,6 +133,9 @@
         <p id="share-text"></p>
         <div class="choices">
           <button type="button" id="share-ask" class="action">Ask JARVIS about it</button>
+          <input id="share-question" type="text" maxlength="300" placeholder="Ask about it: what is this?" autocomplete="off" aria-label="What to ask about the picture" hidden>
+          <button type="button" id="share-look" class="action">Ask JARVIS what it sees</button>
+          <p id="share-answer" role="status" hidden></p>
           <button type="button" id="share-wall" class="action">Show it on the wall</button>
           <button type="button" id="share-note" class="action">Add it to the board</button>
           <button type="button" id="share-open" class="action">Open it on the PC</button>

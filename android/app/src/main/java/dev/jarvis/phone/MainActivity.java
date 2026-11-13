@@ -2,6 +2,8 @@ package dev.jarvis.phone;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -15,6 +17,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.os.Handler;
+import android.provider.MediaStore;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -68,6 +71,7 @@ public class MainActivity extends Activity {
     private static WeakReference<MainActivity> visible = new WeakReference<>(null);   // the activity on screen, if any (alarms hand it the reminder to show too)
 
     static final int NOTIFY_REQUEST = 8;
+    static final int LOOK_REQUEST = 9;
     private volatile boolean chatInProgress = false;        // set by the standalone page while it is talking, so reopening the app does not interrupt it
 
     /** An alert or a ringing reminder, for the page to show too when the app is open. */
@@ -442,6 +446,40 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** The "Look" button: the phone's camera app takes one picture, which comes back here to be shrunk and shown to the page (see Share.fromCamera). */
+    private void startCamera() {
+        try {
+            ContentValues v = new ContentValues();
+            v.put(MediaStore.Images.Media.DISPLAY_NAME, "jarvis-look.jpg");
+            v.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+            v.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/JARVIS");
+            Uri target = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+            if (target == null) throw new IllegalStateException("no place for the picture");
+            prefs.edit().putString("look_uri", target.toString()).apply();          // remembered in case the app is rebuilt while the camera is open
+            startActivityForResult(new Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, target)
+                    .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION), LOOK_REQUEST);
+        } catch (ActivityNotFoundException | IllegalStateException | SecurityException e) {
+            Toast.makeText(this, "Couldn't open the camera.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != LOOK_REQUEST) return;
+        String saved = prefs.getString("look_uri", "");
+        prefs.edit().remove("look_uri").apply();
+        if (saved.isEmpty()) return;
+        final Uri uri = Uri.parse(saved);
+        if (result != RESULT_OK) {                                    // cancelled: the empty gallery entry goes away
+            try { getContentResolver().delete(uri, null, null); } catch (Exception ignored) { }
+            return;
+        }
+        Share.fromCamera(this, uri, () -> runOnUiThread(() -> {
+            if (trustedPage && pageDone) web.evaluateJavascript("window.__shareReady&&window.__shareReady()", null);
+        }));
+    }
+
     @Override
     public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
@@ -692,6 +730,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void setFindLoud(boolean on) {
             if (ok()) prefs.edit().putBoolean("find_loud", on).apply();
+        }
+
+        /** The camera button: takes one picture with the phone's camera app; the page then asks what to do with it (like a shared picture). */
+        @JavascriptInterface
+        public void takePhoto() {
+            if (ok()) runOnUiThread(MainActivity.this::startCamera);
         }
 
         /** What was shared to JARVIS from another app: {kind: "text", text} or {kind: "image"} once, or "" when nothing is waiting. */

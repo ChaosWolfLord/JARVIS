@@ -40,9 +40,10 @@ from typing import Callable, Iterator
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from . import audit, browser as browser_mod, persona, pictures as pictures_mod, reminders as reminders_mod, remote as remote_mod, runner, store
+from . import audit, browser as browser_mod, persona, pictures as pictures_mod, reminders as reminders_mod, remote as remote_mod, runner, store, vision as vision_mod
 
 WEB_PHONE = Path(__file__).resolve().parent.parent / "web" / "phone"
 PHONES_FILE = store.STATE / "phones.json"
@@ -579,6 +580,25 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
         except remote_mod.RemoteError as e:
             raise HTTPException(400, str(e)) from None
         return {"ok": True}
+
+    @app.post("/look")
+    async def look(request: Request, question: str = "", wall: bool = False, authorization: str | None = Header(default=None)):
+        """A picture from the phone's camera (or one shared to JARVIS) and a question about it. The picture is not saved; with `wall` the answer
+        also appears on the PC's wall."""
+        token = bearer(authorization)
+        if is_locked():
+            raise HTTPException(423, "The privacy screen is on.")
+        if not phones.allow_chat(token):
+            raise HTTPException(429, "Slow down a little.")
+        try:
+            body = await vision_mod.read_body(request)
+            out = await run_in_threadpool(vision_mod.look, body, question)
+        except vision_mod.VisionError as e:
+            raise HTTPException(400, str(e)) from None
+        audit.record("phone", f"looked: {vision_mod.clean_question(question)[:80]} ({len(body) // 1024} KB, phone camera)")
+        if wall:
+            broadcast({"type": "notify", "title": "Phone camera", "text": out["text"][:300], "speak": ""})
+        return out
 
     @app.get("/routines")
     def routines_list(authorization: str | None = Header(default=None)):

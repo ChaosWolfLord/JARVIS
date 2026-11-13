@@ -143,6 +143,39 @@ def gmail_read(message_id: str, client=None) -> str:
     return wrap(head + (text[:MAX_BODY] or "(no readable text)") + ("\n[trimmed]" if len(text) > MAX_BODY else ""))
 
 
+# ---- look-ups for "JARVIS speaks first" (structured, read-only; nothing here goes to the AI) ----------------
+
+def upcoming_events(minutes: int = 10, now: datetime | None = None, client=None) -> list[dict]:
+    """Timed events that start within the next `minutes` minutes: [{id, title, start, where}]. All-day events are left out."""
+    now = now or datetime.now().astimezone()
+    end = now + timedelta(minutes=max(1, min(int(minutes), 120)))
+    calendars = _get(f"{CAL}/users/me/calendarList", {"minAccessRole": "reader"}, client).get("items", [])
+    chosen = [c for c in calendars if c.get("selected", c.get("primary", False))][:6] or calendars[:1]
+    found: list[dict] = []
+    for cal in chosen:
+        data = _get(f"{CAL}/calendars/{_quote(cal['id'])}/events", {"timeMin": now.isoformat(), "timeMax": end.isoformat(), "singleEvents": "true",
+                                                                    "orderBy": "startTime", "maxResults": 10}, client)
+        for ev in data.get("items", []):
+            if ev.get("status") == "cancelled" or "dateTime" not in ev.get("start", {}):
+                continue
+            start, _ = _when(ev)
+            if start > now:
+                found.append({"id": str(ev.get("id", ""))[:80], "title": str(ev.get("summary", "(no title)"))[:80], "start": start, "where": str(ev.get("location", ""))[:60]})
+    found.sort(key=lambda e: e["start"])
+    return found
+
+
+def important_unread(max_results: int = 10, client=None) -> list[dict]:
+    """Unread, important mail in the inbox from the last day: [{id, sender, when_ms}]. Subjects and bodies are never read."""
+    found = _get(f"{GMAIL}/messages", {"q": "is:unread in:inbox is:important newer_than:1d", "maxResults": max(1, min(int(max_results), 20))}, client).get("messages", [])
+    out = []
+    for m in found:
+        msg = _get(f"{GMAIL}/messages/{m['id']}", {"format": "metadata", "metadataHeaders": ["From"]}, client)
+        sender = re.sub(r'["<>]', "", _header(msg, "From").split("<")[0]).strip() or _header(msg, "From").strip("<> ")
+        out.append({"id": m["id"], "sender": sender[:40] or "someone", "when_ms": int(msg.get("internalDate", 0) or 0)})
+    return out
+
+
 # ---- actions (each is prepared, shown to you, and only then carried out) -------------------------------
 
 def _post(url: str, body: dict, client=None) -> dict:
