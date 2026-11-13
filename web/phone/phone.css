@@ -152,3 +152,15 @@ input.switch:focus-visible { outline: 2px solid rgba(var(--accent), 0.7); outlin
 #share-question { width: 100%; padding: 12px 14px; font: inherit; font-size: 16px; color: var(--white); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; outline: none; }
 #share-question[hidden], #share-answer[hidden] { display: none; }
 #share-answer { margin: 0; padding: 10px 12px; font-size: 15px; line-height: 1.45; color: var(--white); background: rgba(var(--accent), 0.1); border: 1px solid rgba(var(--accent), 0.4); border-radius: 14px; }
+
+/* the lock screen: JARVIS's privacy screen is on and the code is typed here */
+#lock { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: #05070c; }
+#lock .lockbox { width: min(340px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; color: var(--dim); }
+#lock h2 { margin: 4px 0 0; font-size: 20px; color: var(--white); }
+#lock p { margin: 0; font-size: 14px; }
+#lock-dots { min-height: 28px; font-size: 22px; letter-spacing: 8px; color: var(--white); }
+#lock-msg { min-height: 1.4em; color: var(--red); }
+#lock-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; margin-top: 4px; }
+#lock-keys button { height: 58px; font-size: 22px; color: var(--white); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+#lock-keys button:active { background: rgba(var(--accent), 0.25); }
+#lock-keys button.ok { background: rgba(var(--accent), 0.3); border-color: rgba(var(--accent), 0.6); font-size: 16px; }

@@ -1,6 +1,7 @@
 // The privacy screen. "Jarvis, privacy" (or the H key, or Lock now in the status menu) covers the whole wall with a plain
-// black screen, and the server stops answering questions or showing data until the unlock code is given: by voice
-// ("Jarvis, privacy unlock five one four seven"), on the on-screen keypad (touch the screen), or on the keyboard.
+// black screen, switches the microphone and camera off, and the server stops answering questions or showing data until the unlock code is given.
+// The code is typed in the JARVIS app on the phone (never said out loud). Only when no phone is paired, or "Unlock only from the phone app" is
+// switched off, is there a keypad on the wall (touch the screen) or the keyboard.
 // It is a curtain for casual eyes, not a lock against someone who can use the PC. See server/privacy.py.
 
 const WORDS = { zero: 0, oh: 0, o: 0, one: 1, two: 2, to: 2, too: 2, three: 3, four: 4, for: 4, five: 5, six: 6, seven: 7, eight: 8, ate: 8, nine: 9 };
@@ -11,16 +12,17 @@ export function spokenDigits(text) {
 }
 
 const LOCK = /^\W*(?:privacy(?:\W+(?:on|mode|screen|please|now))?|lock(?:\W+(?:the\W+)?(?:screen|board|wall|jarvis))?)\W*$/;
-const UNLOCK = /^\W*(?:privacy\W+)?unlock\b\W*(.*)$/;
 
 export class Privacy {
-  constructor({ overlay, onLocked, onUnlocked, toast }) {
+  constructor({ overlay, onLocked, onUnlocked, onState, toast }) {
     this.overlay = overlay;
+    this.onState = onState;
     this.onLocked = onLocked;
     this.onUnlocked = onUnlocked;
     this.toast = toast;
     this.locked = false;
     this.hasCode = false;
+    this.wallUnlock = true;                                 // false: the code has to be typed on the phone
     this.entry = '';
     this.wait = 0;
     this.padOpen = false;
@@ -62,9 +64,10 @@ export class Privacy {
 
   render() {
     this.overlay.hidden = !this.locked;
-    this.pad.hidden = !(this.locked && this.padOpen && this.hasCode);
+    this.pad.hidden = !(this.locked && this.padOpen && this.hasCode && this.wallUnlock);
     this.dots.textContent = '●'.repeat(this.entry.length) || '';
-    this.hintEl.textContent = !this.hasCode ? 'Touch the screen to unlock' : this.padOpen ? '' : 'Touch the screen, or say “Jarvis, privacy unlock” and the code';
+    this.hintEl.textContent = !this.wallUnlock ? 'Locked. The microphone is off. Unlock with the code in the JARVIS app on your phone.'
+      : !this.hasCode ? 'Touch the screen to unlock' : this.padOpen ? '' : 'Touch the screen to enter the code';
     this.msg.textContent = this.wait > 0 ? `Too many wrong tries. Wait ${this.wait} seconds.` : this.msg.dataset.text || '';
     this.timeEl.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -73,11 +76,13 @@ export class Privacy {
     const was = this.locked;
     this.locked = Boolean(state.locked);
     this.hasCode = Boolean(state.has_code);
+    this.wallUnlock = state.wall_unlock !== false;
     this.wait = state.wait || 0;
     try { localStorage.setItem('jarvis.locked', this.locked ? '1' : '0'); } catch { /* not remembered */ }
     if (this.locked && !was) { this.entry = ''; this.padOpen = false; this.msg.dataset.text = ''; this.onLocked?.(); }
     if (!this.locked && was) { this.padOpen = false; this.entry = ''; this.onUnlocked?.(); }
     this.render();
+    this.onState?.(state);
   }
 
   async refresh() {
@@ -100,7 +105,7 @@ export class Privacy {
     const r = await this.post('unlock', { code });
     this.set(r);
     if (!r.ok) {
-      this.msg.dataset.text = r.wait ? '' : 'That code is wrong.';
+      this.msg.dataset.text = r.wait || !this.wallUnlock ? '' : 'That code is wrong.';
       this.entry = '';
       this.render();
     }
@@ -108,6 +113,7 @@ export class Privacy {
   }
 
   openPad() {
+    if (!this.wallUnlock) return;                        // the code is typed on the phone
     if (!this.hasCode) { this.unlock(''); return; }      // no code set: it is just a curtain
     this.padOpen = true;
     this.render();
@@ -125,24 +131,17 @@ export class Privacy {
   key(e) {
     if (!this.locked) return;
     e.stopPropagation();                                  // nothing else on the page reacts while the screen is down
+    if (!this.wallUnlock) { e.preventDefault(); return; }
     if (/^\d$/.test(e.key)) { this.padOpen = this.hasCode ? true : this.padOpen; this.press(e.key); }
     else if (e.key === 'Backspace') this.press('⌫');
     else if (e.key === 'Enter') { if (this.hasCode) this.press('OK'); else this.unlock(''); }
     if (/^(\d|Backspace|Enter|Tab| )$/.test(e.key) || e.key.length > 1) e.preventDefault();
   }
 
-  /** Voice commands about the screen. Returns true if the command was handled (and so mustn't go to the AI). */
+  /** Voice commands about the screen. Returns true if the command was handled (and so mustn't go to the AI). The code is never taken by voice. */
   handleVoice(text) {
     const t = String(text).toLowerCase().trim().replace(/^jarvis\b\W*/, '');
-    if (this.locked) {
-      const m = t.match(UNLOCK);
-      if (m) {
-        const digits = spokenDigits(m[1]);
-        if (digits) this.unlock(digits);
-        else this.openPad();
-      }
-      return true;                                         // while the screen is down, nothing else is acted on or spoken
-    }
+    if (this.locked) return true;                          // while the screen is down nothing is acted on or spoken (the microphone is off anyway)
     if (LOCK.test(t)) { this.lock(); return true; }
     return false;
   }

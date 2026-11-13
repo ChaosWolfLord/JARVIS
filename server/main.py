@@ -59,6 +59,7 @@ async def lifespan(_app):
             privacy.locked,
             local_command=lambda text: localcmd.handle(text, tell_page),
             routines=_Routines(),
+            privacy_door=_PrivacyDoor(),
             on_events_connect=lambda: courier.deliver_due(),      # a phone just opened its page: hand over reminders that were waiting for it
             port=int(os.getenv("JARVIS_PHONE_PORT", "8443")),
             tls=os.getenv("JARVIS_PHONE_TLS", "1") != "0",
@@ -135,6 +136,36 @@ def tell_pages(event: dict) -> None:
         asyncio.run_coroutine_threadsafe(hub.send_all(hub.viewers, json.dumps(event)), loop)
 
 
+class _PrivacyDoor:
+    """What the phone door may do with the privacy screen: see it, lock it, and type the unlock code (the wall's pages are told straight away)."""
+
+    def status(self) -> dict:
+        return privacy.status()
+
+    def lock(self) -> dict:
+        privacy.lock()
+        audit.record("privacy", "screen locked (from the phone)")
+        tell_pages({"type": "privacy"})
+        return privacy.status()
+
+    def unlock(self, code: str) -> dict:
+        ok, wait = privacy.unlock(code, via="phone")
+        audit.record("privacy", "screen unlocked (from the phone)" if ok else f"wrong code from the phone{f' (wait {wait}s)' if wait else ''}", "ok" if ok else "denied")
+        if ok:
+            tell_pages({"type": "privacy"})
+        return {**privacy.status(), "ok": ok, "wait": wait}
+
+
+def _phone_ready() -> bool:
+    try:
+        return bool(phone_service.status()["running"] and phone_service.phones.names())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+privacy.phone_ready = _phone_ready
+
+
 class _Routines:
     """What the phone door may do with routines: list them, and run one by its id (it can never change them)."""
 
@@ -177,6 +208,7 @@ def start_wake() -> None:
         lambda: tell({"type": "wake"}),
         device=os.getenv("JARVIS_WAKEWORD_DEVICE") or None,
         on_command=lambda text: tell({"type": "wake_command", "text": text}),
+        blocked=privacy.locked,          # the PC's microphone is closed while the privacy screen is up
     )
     wake.service.start()
 
@@ -741,6 +773,20 @@ def privacy_unlock(req: UnlockRequest):
     ok, wait = privacy.unlock(req.code)
     audit.record("privacy", "screen unlocked" if ok else f"wrong code{f' (wait {wait}s)' if wait else ''}", "ok" if ok else "denied")
     return {**privacy.status(), "ok": ok, "wait": wait}
+
+
+class PhoneOnly(BaseModel):
+    on: bool
+
+
+@app.post("/api/privacy/phone-only")
+def privacy_phone_only(req: PhoneOnly):
+    """"Unlock only from the phone app": on (the default) or off. It can't be changed while the screen is down."""
+    if privacy.locked():
+        raise HTTPException(423, "Unlock the screen first.")
+    privacy.set_phone_only(req.on)
+    audit.record("privacy", "unlock only from the phone: " + ("on" if req.on else "off"))
+    return privacy.status()
 
 
 @app.post("/api/privacy/code")

@@ -429,10 +429,12 @@ What it can't protect you from: the page you open is an ordinary web page, so Ch
 
 ## Privacy screen
 
-Say **"Jarvis, privacy"** (or "lock the screen"), press **H**, or use *Lock the screen now* in the status menu: the whole wall goes black, with a lock and the clock. While it is down **the server answers nothing** (chat, memory, board, mail, usage... all refused), nothing is spoken, and other voice commands are ignored, so a guest can't ask JARVIS for your information. To bring it back:
-- **Say** "Jarvis, privacy unlock five one four seven" (say the digits one by one; "5147" and "51 47" also work, "fifty-one forty-seven" does not), or
-- **touch the screen** (or hover and tap with the pen) to get a keypad, or
-- type the digits on the keyboard.
+Say **"Jarvis, privacy"** (or "lock the screen"), press **H**, use *Lock the screen now* in the status menu, or press **Lock JARVIS** in the phone app's menu: the whole wall goes black, with a lock and the clock. While it is down JARVIS is off:
+- **The microphone is off.** The PC's microphone closes at once (whatever the pages say) and the page's own voice recognition and the webcam stop; nothing listens for "Jarvis" and nothing is spoken. Voice is switched back on by itself when you unlock.
+- **The server answers nothing** (chat, memory, board, mail, usage... all refused), so a guest can't ask JARVIS for your information. The phone app is locked too.
+- **Unlock with the code in the phone app.** The phone shows a lock screen with a keypad (it appears by itself within a few seconds, and at once if you open the app). The code is never said out loud and the wall has no keypad, so nobody at the wall can try codes. A wrong code is slowed down exactly like at the wall (below).
+
+This "unlock only from the phone" rule applies while a code is set and at least one phone is paired; with no phone paired, the wall's touch keypad (or the keyboard) still unlocks, so you can never be locked out of a PC with no phone. You can also switch it off under *Privacy > Unlock only from the phone app* to allow the wall keypad as well. If your phone is lost while the wall is locked, set `"phone_only": false` in `privacy.json` (in the `jarvis` folder under `%LOCALAPPDATA%`) and reload the page; the keypad returns. Saying the code ("privacy unlock five one four seven") no longer works, on purpose.
 
 The code is 4 to 8 digits, set under *Privacy > Unlock code…* in the status menu (changing it needs the current one). It is stored only as a salted hash. Five wrong tries in a row lock you out for 30 seconds, doubling each time up to 15 minutes, even for the right code. It stays locked across restarts and page reloads. With no code set, a touch unlocks it (just a curtain). **Be realistic about what it is:** a curtain for casual eyes. Anyone who hears you say the code can use it (use the keypad when people are listening), and someone who can use your PC can still read its files.
 

@@ -136,7 +136,8 @@
               <button type="button" id="privacy-remove" title="Remove the code: the screen then unlocks with a touch">No code</button>
               <p id="privacy-note" class="wm-hint"></p>
             </form>
-            <p class="wm-hint">Say “Jarvis, privacy” (or press H) to hide everything; “Jarvis, privacy unlock” and the digits, or the keypad, brings it back. While it is on, JARVIS answers nothing.</p>
+            <label class="status-field"><input type="checkbox" id="privacy-phone-only"> Unlock only from the phone app</label>
+            <p class="wm-hint">Say “Jarvis, privacy” (or press H, or press Lock on your phone) to hide everything. While it is on, the microphone and camera are off and JARVIS answers nothing; the code is typed in the JARVIS app on your phone, never said aloud. With this switched on, the wall has no keypad while a phone is paired and a code is set; switch it off to type the code on the wall too (and if your phone is lost, set <i>"phone_only": false</i> in <i>privacy.json</i> in the jarvis folder under %LOCALAPPDATA%).</p>
           </div>
         </details>
 

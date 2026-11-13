@@ -110,7 +110,7 @@ export class Vision {
 
   /** Looks and answers: the answer is spoken and shown. Never more than one look at a time. */
   async look(question) {
-    if (this.working) return;
+    if (this.working || globalThis.jarvis?.privacy?.locked) return;                 // never while the privacy screen is up
     if (!this.settings.on) { this.tell('Looking through the camera is switched off. You can turn it on in the status menu, under Vision.'); return; }
     this.working = true;
     this.show('Looking…');

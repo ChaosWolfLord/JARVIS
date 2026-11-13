@@ -95,8 +95,99 @@ function unpair(message) {
 
 async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-  return fetch(path, { ...options, headers });
+  const res = await fetch(path, { ...options, headers });
+  if (res.status === 423 && !$('chat').hidden) showLock({ locked: true, has_code: true });      // the PC's privacy screen is on
+  return res;
 }
+
+// ---- the privacy screen (the code is typed here) -------------------------------------------------------------------
+// While JARVIS's privacy screen is on, the PC's microphone is off and nothing is answered; this phone shows a keypad and the code unlocks it.
+let lockEntry = '';
+let lockWait = 0;
+let lockHasCode = true;
+
+function lockRender() {
+  $('lock-dots').textContent = '●'.repeat(lockEntry.length);
+  if (lockWait > 0) $('lock-msg').textContent = `Too many wrong tries. Wait ${lockWait} seconds.`;
+}
+
+function showLock(state) {
+  const was = !$('lock').hidden;
+  lockHasCode = state.has_code !== false;
+  $('lock').hidden = false;
+  $('lock-sub').textContent = state.has_code === false ? 'The microphone is off. Press OK to unlock.' : 'The microphone is off. Enter the unlock code.';
+  if (!was) {
+    lockEntry = '';
+    $('lock-msg').textContent = '';
+    if (typeof stopListening === 'function') stopListening();              // this phone's microphone and voice stop too
+    try { speechSynthesis.cancel(); } catch { /* nothing speaking */ }
+    $('menu').hidden = true;
+    $('rem').hidden = true;
+    $('remote').hidden = true;
+    closeShare();
+  }
+  lockRender();
+}
+
+function hideLock() {
+  if ($('lock').hidden) return;
+  $('lock').hidden = true;
+  lockEntry = '';
+  checkConnection();
+}
+
+async function refreshLock() {
+  if (!token || LOCAL) return;
+  try {
+    const res = await fetch('/privacy', { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) return;
+    const state = await res.json();
+    if (state.locked) showLock(state); else hideLock();
+  } catch { /* the PC is out of reach: leave things as they are */ }
+}
+
+async function submitLock() {
+  if (lockWait > 0 || (lockHasCode && !lockEntry)) return;
+  try {
+    const res = await fetch('/privacy/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ code: lockEntry }) });
+    const data = await res.json().catch(() => ({}));
+    lockEntry = '';
+    if (res.status === 429) {
+      lockWait = Number(/(\d+) seconds/.exec(data.detail || '')?.[1]) || 30;
+      const timer = setInterval(() => { lockWait -= 1; if (lockWait <= 0) { clearInterval(timer); lockWait = 0; $('lock-msg').textContent = ''; } lockRender(); }, 1000);
+    } else if (res.ok && data.ok) {
+      hideLock();
+      return;
+    } else {
+      $('lock-msg').textContent = 'That code is wrong.';
+    }
+  } catch {
+    $('lock-msg').textContent = 'Could not reach your PC.';
+  }
+  lockRender();
+}
+
+for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', 'OK']) {
+  const b = Object.assign(document.createElement('button'), { type: 'button', textContent: k, className: k === 'OK' ? 'ok' : '' });
+  b.addEventListener('click', () => {
+    if (lockWait > 0) return;
+    $('lock-msg').textContent = '';
+    if (k === '⌫') lockEntry = lockEntry.slice(0, -1);
+    else if (k === 'OK') { submitLock(); return; }
+    else if (lockEntry.length < 8) lockEntry += k;
+    lockRender();
+  });
+  $('lock-keys').append(b);
+}
+$('lock-now').addEventListener('click', async () => {
+  $('menu').hidden = true;
+  try {
+    const res = await fetch('/privacy/lock', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) showLock(await res.json());
+  } catch { /* could not reach the PC */ }
+});
+setInterval(() => { if (token && !document.hidden && !$('chat').hidden) refreshLock(); }, 8000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLock(); });
 
 // ---- pairing -------------------------------------------------------------------------------------------------------
 function deviceName() {
@@ -131,6 +222,7 @@ async function checkConnection() {
     if (res.status === 401) { unpair('This phone was forgotten on the PC. Pair it again.'); return false; }
     const data = await res.json();
     setState(data.locked ? 'Privacy screen is on' : 'Connected to your PC', data.locked ? 'bad' : 'ok');
+    if (data.locked) refreshLock();
     return true;
   } catch {
     setState('Can’t reach your PC', 'bad');

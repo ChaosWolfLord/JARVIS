@@ -250,7 +250,8 @@ class WakeWord:
     """A background listener. on_wake() is called (from its own thread) each time the name is heard, and on_command(text) with what was said
     after it (when commands are captured here). The microphone is open only while a page has said voice is on (vote())."""
 
-    def __init__(self, on_wake, device=None, model_path: Path | None = None, on_command=None) -> None:
+    def __init__(self, on_wake, device=None, model_path: Path | None = None, on_command=None, blocked=None) -> None:
+        self.blocked = blocked or (lambda: False)         # True while the privacy screen is up: the microphone is closed whatever the pages say
         self.on_wake = on_wake
         self.on_command = on_command
         self.device = device
@@ -293,6 +294,11 @@ class WakeWord:
         return True
 
     def wanted(self) -> bool:
+        try:
+            if self.blocked():
+                return False
+        except Exception:  # noqa: BLE001 - if the privacy state can't be read, stay closed
+            return False
         now = time.monotonic()
         with self.lock:
             return any(on and now - t < CLIENT_TTL for on, t in self.clients.values())

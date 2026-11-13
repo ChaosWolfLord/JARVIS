@@ -298,6 +298,10 @@ class RemoteCommand(BaseModel):
     key: str = Field(default="", max_length=12)
 
 
+class UnlockCode(BaseModel):
+    code: str = Field(default="", max_length=20)
+
+
 class RoutineRun(BaseModel):
     id: str = Field(min_length=1, max_length=60)
 
@@ -385,7 +389,7 @@ def wall_line(ev: dict) -> str:
 def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcast: Callable[[dict], None],
               is_locked: Callable[[], bool] = lambda: False, events: "Events | None" = None,
               on_events_connect: Callable[[], None] | None = None, apk: Path | None = None, reminder_store=None,
-              local_command: Callable[[str], dict] | None = None, remote=None, routines=None) -> FastAPI:
+              local_command: Callable[[str], dict] | None = None, remote=None, routines=None, privacy_door=None) -> FastAPI:
     events = events if events is not None else Events()
     remote = remote or remote_mod.remote
     apk = apk or APK_FILE
@@ -459,6 +463,31 @@ def build_app(phones: Phones, chat_turn: Callable[..., Iterator[dict]], broadcas
     def ping(authorization: str | None = Header(default=None)):
         bearer(authorization)
         return {"ok": True, "locked": is_locked()}
+
+    @app.get("/privacy")
+    def privacy_state(authorization: str | None = Header(default=None)):
+        """Is the privacy screen on, and is a code needed? (Allowed while it is on: this is how the phone shows its lock screen.)"""
+        bearer(authorization)
+        return privacy_door.status() if privacy_door else {"locked": is_locked(), "has_code": False, "wait": 0}
+
+    @app.post("/privacy/unlock")
+    def privacy_unlock(req: UnlockCode, authorization: str | None = Header(default=None)):
+        """Types the unlock code on the phone: the way to bring JARVIS back when the privacy screen is on. Wrong guesses are slowed down on the PC."""
+        bearer(authorization)
+        if privacy_door is None:
+            raise HTTPException(404, "Not available.")
+        out = privacy_door.unlock(req.code)
+        if out.get("wait"):
+            raise HTTPException(429, f"Too many wrong codes. Try again in {out['wait']} seconds.")
+        return out
+
+    @app.post("/privacy/lock")
+    def privacy_lock(authorization: str | None = Header(default=None)):
+        """Turns the privacy screen on from the phone."""
+        bearer(authorization)
+        if privacy_door is None:
+            raise HTTPException(404, "Not available.")
+        return privacy_door.lock()
 
     @app.post("/reminders/sync")
     def reminders_sync(req: SyncRequest, authorization: str | None = Header(default=None)):
@@ -725,7 +754,7 @@ class PhoneService:
         return f"{'https' if self.tls else 'http'}://{ip}:{self.port}"
 
     def start(self, chat_turn, broadcast, is_locked, port: int = 8443, tls: bool = True, host: str = "0.0.0.0", on_events_connect=None, apk: Path | None = None,
-              local_command=None, remote=None, routines=None) -> None:
+              local_command=None, remote=None, routines=None, privacy_door=None) -> None:
         import uvicorn
         self.ip, self.port, self.tls, self.error = lan_ip(), port, tls, ""
         try:
@@ -733,7 +762,7 @@ class PhoneService:
             if tls:
                 cert, key = ensure_cert(self.ip)
                 kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
-            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store, local_command, remote, routines)
+            app = build_app(self.phones, chat_turn, broadcast, is_locked, self.events, on_events_connect, apk, self.reminder_store, local_command, remote, routines, privacy_door)
             self.server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False, **kwargs))
         except Exception as e:  # noqa: BLE001 - a phone door that can't start must never stop JARVIS starting
             self.error = f"{e.__class__.__name__}: {e}"

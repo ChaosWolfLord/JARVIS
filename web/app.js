@@ -374,6 +374,7 @@ pen.onNotify = (m) => {
   showBubble(`<p><b>${plain(m.title)}</b></p><p>${plain(m.text)}</p>`, 15_000);
   if (m.speak) voice.speak(m.speak);
 };
+pen.onPrivacy = () => privacy.refresh();                       // the phone locked or unlocked the screen
 pen.onNudge = (m) => { ambient.poke(); sounds.play('ok'); nudgesUI.deliver(m); };      // JARVIS speaks first
 window.jarvis.alerts = alerts;
 // The start-up sequence plays once each time the JARVIS server starts (not on every page reload).
@@ -420,13 +421,18 @@ window.jarvis.status = status;
 const privacy = new Privacy({
   overlay: $('privacy'),
   toast,
-  onLocked: () => { showoff.stop(); voice.cancelSpeech?.(); setPanel(false, false); hideBubble(true); status.toggle(false); widgets.toggleMenu(false); },
-  onUnlocked: () => { board.sync(); status.poll(); },
+  onLocked: () => { voice.pauseForPrivacy(); showoff.stop(); voice.cancelSpeech?.(); setPanel(false, false); hideBubble(true); status.toggle(false); widgets.toggleMenu(false); },
+  onUnlocked: () => { board.sync(); status.poll(); voice.resumeIfPaused(); },
+  onState: (s) => { $('privacy-phone-only').checked = Boolean(s.phone_only); },
 });
 window.jarvis.privacy = privacy;
 voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || routinesUI.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || filesUI.handleVoice(command) || nudgesUI.handleVoice(command) || visionUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
 chat.onTyped = (text) => voice.special(text);       // typing "show off", "lights off"... in the chat box works like saying it
 $('privacy-lock').addEventListener('click', () => privacy.lock());
+$('privacy-phone-only').addEventListener('change', async (e) => {
+  const res = await fetch('/api/privacy/phone-only', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: e.target.checked }) });
+  if (res.ok) privacy.set(await res.json()); else privacy.refresh();
+});
 $('privacy-setcode').addEventListener('click', () => {
   $('privacy-form').hidden = !$('privacy-form').hidden;
   $('privacy-current').hidden = !privacy.hasCode;

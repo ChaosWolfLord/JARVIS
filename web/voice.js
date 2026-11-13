@@ -194,7 +194,20 @@ export class Voice {
     if (want === true || (want === null && wakeRunning)) this.start();
   }
 
+  /** The privacy screen went up: stop listening (this page's microphone and the PC's), and remember to start again on unlock. */
+  pauseForPrivacy() {
+    this.resumeAfterPrivacy = this.resumeAfterPrivacy || this.enabled;
+    if (this.enabled) this.stop(true);
+  }
+
+  resumeIfPaused() {
+    const again = this.resumeAfterPrivacy;
+    this.resumeAfterPrivacy = false;
+    if (again && !this.enabled) this.start();
+  }
+
   start() {
+    if (window.jarvis?.privacy?.locked) { this.resumeAfterPrivacy = true; return; }      // nothing listens while the privacy screen is up
     this.enabled = true;
     this.syncServer(true);
     this.button.classList.add('on');
@@ -210,7 +223,7 @@ export class Voice {
     }, 1500);
   }
 
-  stop() {
+  stop(quiet = false) {
     this.enabled = false;
     this.syncServer(false);                                // the PC's microphone closes too
     this.awaitUntil = 0;
@@ -219,7 +232,7 @@ export class Voice {
     this.button.classList.remove('on');
     this.rec?.abort();
     this.cancelSpeech();
-    this.show('Voice off', 1500);
+    if (!quiet) this.show('Voice off', 1500);
   }
 
   beginRecognition() {
