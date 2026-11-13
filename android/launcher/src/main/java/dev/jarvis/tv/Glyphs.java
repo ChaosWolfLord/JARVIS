@@ -5,7 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 
-/** The pictures on the HDMI and USB buttons, drawn straight into a bitmap of the size they are shown at (they are not apps, so they have no icon of their own). */
+/** The pictures on the HDMI, USB and All apps buttons, drawn straight into a bitmap of the size they are shown at (they are not apps, so they have no icon of their own). */
 final class Glyphs {
     private Glyphs() {
     }
@@ -23,8 +23,22 @@ final class Glyphs {
         Paint solid = new Paint(Paint.ANTI_ALIAS_FLAG);
         solid.setColor(0xFF3FD8FF);
         if (key.equals(HomeActivity.HDMI)) hdmi(c, line);
+        else if (key.equals(HomeActivity.ALL)) grid(c, line);
         else usb(c, line, solid);
         return bitmap;
+    }
+
+    /** Four rounded squares: "all apps". */
+    private static void grid(Canvas c, Paint line) {
+        Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        fill.setColor(0x333FD8FF);
+        for (int row = 0; row < 2; row++) {
+            for (int col = 0; col < 2; col++) {
+                float left = 0.17f + col * 0.35f, top = 0.17f + row * 0.35f;
+                c.drawRoundRect(left, top, left + 0.30f, top + 0.30f, 0.06f, 0.06f, fill);
+                c.drawRoundRect(left, top, left + 0.30f, top + 0.30f, 0.06f, 0.06f, line);
+            }
+        }
     }
 
     /** An HDMI plug seen from the front: the flat-topped, chamfered-bottom shape with its row of pins. */

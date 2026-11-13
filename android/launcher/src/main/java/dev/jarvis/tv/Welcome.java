@@ -1,21 +1,15 @@
 package dev.jarvis.tv;
 
 import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.RadialGradient;
-import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.util.Calendar;
 
-/** A short welcome shown once each time the projector is switched on: JARVIS's orb, the name and a greeting, then it fades into the home screen. */
+/** A short welcome shown once each time the projector is switched on: JARVIS's orb of dots, the name and a greeting, then it fades into the home screen. */
 final class Welcome extends FrameLayout {
     private final Runnable onDone;
     private final LinearLayout column;                        // the orb and the words: they fade in over the solid background
@@ -32,8 +26,8 @@ final class Welcome extends FrameLayout {
         column.setGravity(Gravity.CENTER);
         addView(column, new LayoutParams(-1, -1));
 
-        OrbView orb = new OrbView(context);
-        column.addView(orb, new LinearLayout.LayoutParams(Math.round(120 * density), Math.round(120 * density)));
+        DotOrb orb = new DotOrb(context);
+        column.addView(orb, new LinearLayout.LayoutParams(Math.round(160 * density), Math.round(160 * density)));
         orb.setScaleX(0.85f);
         orb.setScaleY(0.85f);
         orb.animate().scaleX(1.08f).scaleY(1.08f).setDuration(1800).start();
@@ -83,31 +77,5 @@ final class Welcome extends FrameLayout {
         if (finished) return;
         finished = true;
         onDone.run();
-    }
-
-    /** A glowing cyan ball inside a thin ring. */
-    private static final class OrbView extends View {
-        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-        OrbView(Context context) {
-            super(context);
-            ring.setStyle(Paint.Style.STROKE);
-            ring.setColor(0xFF3FD8FF);
-        }
-
-        @Override
-        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-            float r = Math.min(w, h) / 2f;
-            fill.setShader(new RadialGradient(w / 2f, h / 2f, r, new int[]{0xFFE8FBFF, 0xFF3FD8FF, 0x00102030}, new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
-            ring.setStrokeWidth(Math.max(2f, r * 0.05f));
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            float cx = getWidth() / 2f, cy = getHeight() / 2f, r = Math.min(getWidth(), getHeight()) / 2f;
-            canvas.drawCircle(cx, cy, r * 0.95f, fill);
-            canvas.drawCircle(cx, cy, r * 0.95f, ring);
-        }
     }
 }

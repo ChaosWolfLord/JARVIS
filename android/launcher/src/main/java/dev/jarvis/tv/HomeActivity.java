@@ -25,7 +25,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextClock;
@@ -43,14 +42,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * JARVIS Home: the projector's home screen. A clock, a row of pinned buttons (HDMI first) and every other app below it,
- * all reachable with the remote's arrow keys and OK. Long-press OK on a tile for pin, hide, app info, uninstall and the power-on start.
+ * JARVIS Home: the projector's home screen. A clock, a big orb of turning dots in the middle and the pinned buttons (HDMI first) round it;
+ * the last tile opens a page with every other app. All reachable with the remote's arrow keys and OK.
+ * Long-press OK on a tile for pin, hide, app info, uninstall and the power-on start.
  * A short welcome shows once each time the projector is switched on.
  */
 public class HomeActivity extends Activity {
     // Two buttons that are not apps: HDMI (shows whatever is plugged into the projector's HDMI socket) and USB (the file manager, which lists a plugged-in drive).
     static final String HDMI = "tv:hdmi";
     static final String USB = "tv:usb";
+    static final String ALL = "tv:all";               // the last tile round the orb: opens the page with every app
+    private static final int MAX_ON_RING = 9;         // pinned apps beyond this are still in "All apps"
     private static final String FILE_MANAGER = "com.hisilicon.explorer";
     private static final String[] DEFAULT_PINNED = {HDMI, "com.htc.magcubicos", "com.softwinner.awsource", "com.android.tv.settings", "com.android.vending", FILE_MANAGER};
     // The factory test menu (nothing to do there) and Google's touch-screen "Files" app: it can't be steered with arrow keys, and the
@@ -78,9 +80,10 @@ public class HomeActivity extends Activity {
     private Welcome welcome;     // the short welcome, only while it is showing
     private SharedPreferences prefs;
     private float density;
-    private LinearLayout pinnedRow;
-    private GridLayout grid;
-    private ScrollView scroll;
+    private Ring ring;          // the orb in the middle and the pinned tiles round it
+    private FrameLayout allApps; // the "All apps" page, only while it is open
+    private GridLayout allGrid;
+    private Tile allTile;        // the ring's "All apps" tile, which gets the selection back when the page closes
     private List<App> everyApp = new ArrayList<>();
     private final BroadcastReceiver packagesChanged = new BroadcastReceiver() {
         @Override
@@ -100,39 +103,13 @@ public class HomeActivity extends Activity {
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(44), dp(22), dp(44), 0);
+        page.setPadding(dp(36), dp(18), dp(36), dp(14));
         root.addView(page, new FrameLayout.LayoutParams(-1, -1));
 
         page.addView(header());
 
-        scroll = new ScrollView(this);
-        scroll.setVerticalScrollBarEnabled(false);
-        scroll.setClipChildren(false);
-        scroll.setClipToPadding(false);
-        scroll.setPadding(0, dp(4), 0, dp(24));
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setClipChildren(false);
-        scroll.addView(body);
-        page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        body.addView(sectionLabel("PINNED"));
-        HorizontalScrollView pinnedScroll = new HorizontalScrollView(this);
-        pinnedScroll.setHorizontalScrollBarEnabled(false);
-        pinnedScroll.setClipChildren(false);
-        pinnedScroll.setClipToPadding(false);
-        pinnedScroll.setPadding(dp(6), dp(8), dp(6), dp(12));
-        pinnedRow = new LinearLayout(this);
-        pinnedRow.setClipChildren(false);
-        pinnedScroll.addView(pinnedRow);
-        body.addView(pinnedScroll);
-
-        body.addView(sectionLabel("ALL APPS"));
-        grid = new GridLayout(this);
-        grid.setColumnCount(6);
-        grid.setClipChildren(false);
-        grid.setPadding(dp(6), dp(8), dp(6), dp(12));
-        body.addView(grid);
+        ring = new Ring(this, new OrbSurface(this), density);
+        page.addView(ring, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         setContentView(root);
         refresh();
@@ -170,16 +147,6 @@ public class HomeActivity extends Activity {
         when.addView(date);
         bar.addView(when);
         return bar;
-    }
-
-    private TextView sectionLabel(String text) {
-        TextView label = new TextView(this);
-        label.setText(text);
-        label.setTextColor(0xFF5E7A90);
-        label.setTextSize(11);
-        label.setLetterSpacing(0.2f);
-        label.setPadding(dp(8), dp(10), 0, 0);
-        return label;
     }
 
     // ---- the list of apps -------------------------------------------------------------------------------------
@@ -232,8 +199,14 @@ public class HomeActivity extends Activity {
         prefs.edit().putStringSet("hidden", keys).apply();
     }
 
+    /** Rebuilds the tiles round the orb (and the "All apps" page if it is open) from the current list of apps and the saved pins. */
     private void refresh() {
-        String focused = getCurrentFocus() instanceof Tile ? ((Tile) getCurrentFocus()).key : lastFocus;
+        refresh(null);
+    }
+
+    /** @param select which tile to select afterwards (null: keep the current one) */
+    private void refresh(String select) {
+        String focused = select != null ? select : getCurrentFocus() instanceof Tile ? ((Tile) getCurrentFocus()).key : lastFocus;
         lastFocus = null;
         everyApp = queryApps();
         Map<String, App> byPkg = new LinkedHashMap<>();
@@ -241,30 +214,93 @@ public class HomeActivity extends Activity {
         Set<String> hidden = hiddenKeys();
         List<String> pinned = pinnedKeys();
 
-        pinnedRow.removeAllViews();
-        grid.removeAllViews();
+        ring.clearTiles();
         Tile first = null, wanted = null;
+        int onRing = 0;
         for (String key : pinned) {
             App app = byPkg.get(key);
-            if (app == null) continue;
-            Tile tile = tile(app, 112, 104, 52);              // six of these (plus their margins) fill the width of a 16:9 screen
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.setMargins(dp(6), 0, dp(6), 0);
-            pinnedRow.addView(tile, lp);
+            if (app == null || onRing == MAX_ON_RING) continue;
+            Tile tile = tile(app, 96, 84, 40);
+            ring.addView(tile);
+            onRing++;
             if (first == null) first = tile;
             if (key.equals(focused)) wanted = tile;
         }
-        for (App app : everyApp) {
-            if (pinned.contains(app.pkg) || hidden.contains(app.pkg)) continue;
-            Tile tile = tile(app, 108, 92, 44);
-            GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-            lp.setMargins(dp(6), dp(6), dp(6), dp(6));
-            grid.addView(tile, lp);
-            if (first == null) first = tile;
-            if (app.pkg.equals(focused)) wanted = tile;
+        allTile = tile(button(ALL, "All apps"), 96, 84, 40);
+        ring.addView(allTile);
+        if (first == null) first = allTile;
+        if (ALL.equals(focused)) wanted = allTile;
+
+        if (allApps != null) {                                        // the page with every app is open: rebuild it too, and keep the selection there
+            allGrid.removeAllViews();
+            Tile firstHere = null, wantedHere = null;
+            for (App app : everyApp) {
+                if (hidden.contains(app.pkg)) continue;
+                Tile tile = tile(app, 108, 92, 44);
+                GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+                lp.setMargins(dp(6), dp(6), dp(6), dp(6));
+                allGrid.addView(tile, lp);
+                if (firstHere == null) firstHere = tile;
+                if (app.pkg.equals(focused)) wantedHere = tile;
+            }
+            first = wanted = null;
+            final Tile here = wantedHere != null ? wantedHere : firstHere;
+            if (here != null) here.post(here::requestFocus);
+            return;
         }
         final Tile target = wanted != null ? wanted : first;
         if (target != null) target.post(target::requestFocus);
+    }
+
+    /** The page with every app that is not hidden, over the orb screen. Back (or Home) closes it. */
+    private void openAllApps() {
+        if (allApps != null) return;
+        allApps = new FrameLayout(this);
+        allApps.addView(new Backdrop(this), new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(36), dp(18), dp(36), 0);
+        allApps.addView(page, new FrameLayout.LayoutParams(-1, -1));
+
+        TextView title = new TextView(this);
+        title.setText("ALL APPS");
+        title.setTextColor(0xFF3FD8FF);
+        title.setTextSize(18);
+        title.setTypeface(Typeface.create("sans-serif-light", Typeface.BOLD));
+        title.setLetterSpacing(0.25f);
+        title.setPadding(dp(8), 0, 0, dp(2));
+        page.addView(title);
+        TextView hint = new TextView(this);
+        hint.setText("Back returns to the orb  ·  hold OK on an app to pin it to the orb screen");
+        hint.setTextColor(0xFF5E7A90);
+        hint.setTextSize(11);
+        hint.setPadding(dp(8), 0, 0, 0);
+        page.addView(hint);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setClipChildren(false);
+        scroll.setClipToPadding(false);
+        scroll.setPadding(0, dp(8), 0, dp(24));
+        allGrid = new GridLayout(this);
+        allGrid.setColumnCount(6);
+        allGrid.setClipChildren(false);
+        allGrid.setPadding(dp(6), dp(8), dp(6), dp(12));
+        scroll.addView(allGrid);
+        page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        root.addView(allApps, new FrameLayout.LayoutParams(-1, -1));
+        ring.setVisibility(View.INVISIBLE);                           // so the arrow keys can't wander onto the tiles behind this page, and the orb rests
+        refresh("");                                                  // (no tile is called "": select the first one on the page)
+    }
+
+    private void closeAllApps() {
+        if (allApps == null) return;
+        root.removeView(allApps);
+        allApps = null;
+        allGrid = null;
+        ring.setVisibility(View.VISIBLE);
+        refresh(ALL);
     }
 
     /** An app's icon drawn once into a bitmap exactly as big as it is shown (apps' own icons can be 512 pixels wide: about 1 MB each). */
@@ -282,7 +318,7 @@ public class HomeActivity extends Activity {
         Tile tile = new Tile(this, app.pkg, app.label, smallIcon(app, icon), w, h, icon, density);
         tile.setOnClickListener(v -> open(app));
         tile.setOnLongClickListener(v -> {
-            options(app);
+            if (!app.pkg.equals(ALL)) options(app);                   // "All apps" is not an app: nothing to pin or hide
             return true;
         });
         return tile;
@@ -291,6 +327,10 @@ public class HomeActivity extends Activity {
     // ---- opening and options ----------------------------------------------------------------------------------
 
     private void open(App app) {
+        if (app.pkg.equals(ALL)) {
+            openAllApps();
+            return;
+        }
         Intent launch;
         if (app.pkg.equals(HDMI)) {
             launch = Hdmi.intent();
@@ -314,14 +354,14 @@ public class HomeActivity extends Activity {
         List<String> labels = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
 
-        labels.add(isPinned ? "Unpin from the top row" : "Pin to the top row");
+        labels.add(isPinned ? "Unpin from the orb screen" : "Pin to the orb screen");
         actions.add(() -> {
             if (isPinned) pinned.remove(app.pkg); else pinned.add(app.pkg);
             savePinned(pinned);
             refresh();
         });
         if (isPinned && pinned.indexOf(app.pkg) > 0) {
-            labels.add("Move left");
+            labels.add("Move earlier round the orb");
             actions.add(() -> {
                 int i = pinned.indexOf(app.pkg);
                 Collections.swap(pinned, i, i - 1);
@@ -330,7 +370,7 @@ public class HomeActivity extends Activity {
             });
         }
         if (isPinned && pinned.indexOf(app.pkg) < pinned.size() - 1) {
-            labels.add("Move right");
+            labels.add("Move later round the orb");
             actions.add(() -> {
                 int i = pinned.indexOf(app.pkg);
                 Collections.swap(pinned, i, i + 1);
@@ -447,16 +487,16 @@ public class HomeActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // A home screen has nowhere to go back to.
+        closeAllApps();                  // a home screen has nowhere to go back to, except from the "All apps" page to the orb
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (intent.hasCategory(Intent.CATEGORY_HOME)) {              // Home pressed again: back to the top, first app selected
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) {              // Home pressed again: back to the orb screen, first tile selected
             lastFocus = null;
-            scroll.smoothScrollTo(0, 0);
-            if (pinnedRow.getChildCount() > 0) pinnedRow.getChildAt(0).requestFocus();
+            closeAllApps();
+            if (ring.getChildCount() > 1) ring.getChildAt(1).requestFocus();
         }
     }
 
@@ -482,7 +522,9 @@ public class HomeActivity extends Activity {
         welcome = new Welcome(this, density, () -> {
             if (welcome != null) root.removeView(welcome);
             welcome = null;
+            ring.showOrb(true);
         });
+        ring.showOrb(false);                                         // the orb is a surface above the window and would show through the welcome
         root.addView(welcome, new FrameLayout.LayoutParams(-1, -1));
         welcome.play();
     }
@@ -492,6 +534,19 @@ public class HomeActivity extends Activity {
         if (welcome != null) {                                       // any button ends the welcome; that press is not passed on
             if (event.getAction() == KeyEvent.ACTION_DOWN) welcome.skip();
             return true;
+        }
+        // On the orb screen the arrow keys go round the ring: right = next tile clockwise, left = previous, both wrapping all the way round;
+        // up and down jump straight across the orb to the tile opposite (and press again to come back).
+        View focused = getCurrentFocus();
+        if (allApps == null && focused instanceof Tile && focused.getParent() == ring) {
+            int kind = event.getKeyCode();
+            int tiles = ring.getChildCount() - 1;
+            int steps = kind == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : kind == KeyEvent.KEYCODE_DPAD_LEFT ? -1
+                    : kind == KeyEvent.KEYCODE_DPAD_UP ? tiles / 2 : kind == KeyEvent.KEYCODE_DPAD_DOWN ? -(tiles / 2) : 0;
+            if (steps != 0 || kind == KeyEvent.KEYCODE_DPAD_UP || kind == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) ring.moveFocus(focused, steps);
+                return true;
+            }
         }
         return super.dispatchKeyEvent(event);
     }
@@ -517,9 +572,17 @@ public class HomeActivity extends Activity {
             welcome.animate().cancel();
             root.removeView(welcome);
             welcome = null;
+            ring.showOrb(true);
         }
-        pinnedRow.removeAllViews();
-        grid.removeAllViews();
+        if (allApps != null) {                                       // coming back always shows the orb screen
+            root.removeView(allApps);
+            allApps = null;
+            allGrid = null;
+            ring.setVisibility(View.VISIBLE);
+            lastFocus = null;
+        }
+        ring.clearTiles();
+        allTile = null;
         everyApp = new ArrayList<>();
         System.gc();
     }
