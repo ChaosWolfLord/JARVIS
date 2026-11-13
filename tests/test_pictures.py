@@ -319,6 +319,16 @@ class Wall(unittest.TestCase):
         self.assertIn("pictures_mod.find(pid)", main)
         self.assertIn("nosniff", main[main.index("def get_picture"):main.index("def voice_picture")])
 
+    def test_the_whole_photo_fits_the_card(self):
+        """A tall photo used to grow the card's auto-sized row and show only its top: the image must fill a fixed frame and scale to fit it."""
+        css = (Path(__file__).resolve().parent.parent / "web" / "style.css").read_text(encoding="utf-8")
+        frame = re.search(r"^#picture-frame \{([^}]*)\}", css, re.M).group(1)
+        image = re.search(r"^#picture-img \{([^}]*)\}", css, re.M).group(1)
+        self.assertIn("minmax(0, 1fr)", frame)                    # the row cannot grow past the frame
+        for need in ("width: 100%", "height: 100%", "object-fit: contain"):
+            self.assertIn(need, image)
+        self.assertNotIn("max-height", image)
+
 
 if __name__ == "__main__":
     unittest.main()
