@@ -262,6 +262,18 @@ const pictureUI = new Picture({
   speak: (t) => voice.speak(t),
   show: (ev) => chat.onPicture(ev),
 });
+pictureUI.fit = () => {                    // the card changed shape: keep all of it on the wall
+  const l = widgets.layout.picture;
+  if (!l) return;
+  const b = widgets.box('picture');
+  const down = b.top + b.height - 1070;
+  if (down > 0) l.y = Math.max(8, Math.round(l.y - down));
+  const out = (l.a === 'r' ? 0 : b.left + b.width - (widgets.board.w - 8));
+  if (out > 0) l.x = Math.max(8, Math.round(l.x - out));
+  if (l.a === 'r' && l.x < 8) l.x = 8;
+  widgets.apply('picture');
+  widgets.saveLayout();
+};
 widgets.register({ id: 'picture', title: 'Picture', icon: '▣', blurb: 'A photo on the wall: ask JARVIS to show you a picture of something, or share one from your phone',
   el: $('picture'), onShow: () => pictureUI.onShow(), onHide: () => pictureUI.onHide() });
 const filesUI = new Files({ el: $('files'), speak: (t) => voice.speak(t), show: (ev) => chat.onFiles(ev), showPicture: (ev) => chat.onPicture(ev) });

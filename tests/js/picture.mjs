@@ -35,3 +35,37 @@ ok('only picture requests go to the picture finder');
 card.onHide();
 assert.equal(parts['#picture-img'].src, '');
 ok('a hidden card keeps no picture');
+
+// ---- the card takes the shape of the photo ----
+const { frameSize } = await import('../../web/picture.js');
+assert.deepEqual(frameSize(3000, 2000), { w: 640, h: 427 });            // landscape: about the size it always was
+assert.deepEqual(frameSize(2000, 3000), { w: 533, h: 800 });            // portrait: taller
+assert.deepEqual(frameSize(1000, 1000), { w: 640, h: 640 });
+assert.deepEqual(frameSize(100, 150), { w: 533, h: 800 });              // a small photo is scaled up to fill the box
+assert.equal(frameSize(10000, 1000).h, 200);                            // a panorama keeps a sensible height
+assert.equal(frameSize(0, 0), null);
+assert.equal(frameSize(NaN, 5), null);
+for (const [w, h] of [[4000, 3000], [3000, 4000], [1200, 1200], [9000, 1500]]) {
+  const f = frameSize(w, h);
+  assert.ok(Math.abs(f.w / f.h - w / h) < 0.02 || f.h === 200 || f.w === 200, `${w}x${h} keeps its shape`);
+  assert.ok(f.w <= 640 && f.h <= 800);
+}
+ok('the frame has the shape of the photo, as large as the box allows');
+
+const frameNode = { style: {} };
+const cardNode = { style: {} };
+const img = { ...node(), naturalWidth: 2000, naturalHeight: 3000, addEventListener(e, fn) { this.onload = fn; } };
+let fitted = 0;
+const shaped = new Picture({ el: { ...cardNode, querySelector: (q) => ({ '#picture-img': img, '#picture-frame': frameNode, '#picture-title': node(), '#picture-credit': node() })[q] } });
+shaped.el = cardNode;
+shaped.fit = () => { fitted += 1; };
+img.onload();
+assert.equal(frameNode.style.width, '533px');
+assert.equal(frameNode.style.height, '800px');
+assert.equal(cardNode.style.width, '561px');
+assert.equal(fitted, 1);
+img.naturalWidth = 3000; img.naturalHeight = 2000;
+img.onload();
+assert.equal(frameNode.style.width, '640px');
+assert.equal(cardNode.style.width, '668px');
+ok('when the photo loads, the card is resized to its shape and kept on the wall');
