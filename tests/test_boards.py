@@ -248,6 +248,11 @@ class Pages(unittest.TestCase):
         app = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         self.assertIn("board.flip = new BoardFlip({ board })", app)
 
+    def test_an_older_running_jarvis_is_explained_not_just_method_not_allowed(self):
+        js = (ROOT / "web" / "boards.js").read_text(encoding="utf-8")
+        self.assertIn("res.status === 405", js)
+        self.assertIn("JARVIS_stop.bat", js)
+
     def test_the_wall_looks_again_when_the_boards_change(self):
         app = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         self.assertIn("pen.onBoards = () => board.sync()", app)

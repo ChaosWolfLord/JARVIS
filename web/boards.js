@@ -127,7 +127,12 @@ export class Boards {
     try {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
       const data = await res.json().catch(() => ({}));
-      return res.ok ? { ok: true, data } : { ok: false, error: data.detail || 'That did not work.' };
+      if (res.ok) return { ok: true, data };
+      // The page files are always the newest, but the PC's program only changes when JARVIS is restarted: an older one answers "Method Not Allowed" / "Not Found".
+      if ((res.status === 405 || res.status === 404) && /^(?:method not allowed|not found)$/i.test(data.detail || '')) {
+        return { ok: false, error: 'This PC is still running an older JARVIS that has no whiteboards. Restart it (run JARVIS_stop.bat, then JARVIS.bat) and try again.' };
+      }
+      return { ok: false, error: data.detail || 'That did not work.' };
     } catch {
       return { ok: false, error: 'JARVIS is not reachable right now.' };
     }
