@@ -298,6 +298,19 @@ Say **"Jarvis, show off"** and a random 3D hologram appears on the left while co
 Say or type things like "remind me at 5 to call Sam", "remind me in 40 minutes to check the oven" or "tomorrow at 9 remind me to take the bins out". JARVIS saves them on the PC (not in the browser), so closing the page or restarting JARVIS never loses one. When one is due you hear a chime and JARVIS says it, and an amber note with the reminder stays on the wall until you close it. "What reminders do I have?" lists them and "cancel the reminder about Sam" (or "cancel all my reminders") removes them. If nobody could hear it when it came due (the page was closed, or the privacy screen was up) it waits and arrives as soon as the page opens, worded as "You asked me to remind you...". Use timers for short countdowns; reminders are for clock times and days ahead. Reminders are kept for a day after they are delivered, then forgotten.
 
 
+## Several whiteboards
+
+You can have as many named whiteboards as you like (up to 30) and switch between them. Each has its own drawing and sticky notes; the cards (weather, timers, music...) stay on the wall whichever board is showing. Your existing board is simply the first one, called **Main**: nothing is moved or lost.
+
+- **Make, switch, rename, delete:** open **More > Whiteboards** on the bar. Tap a board to show it; type a name and press **New board** or **Rename this one**; **Delete this board** needs a second tap to confirm (the last board can't be deleted, and a last backup of a deleted board is kept on the PC in `%LOCALAPPDATA%\\jarvis\\backups\\<board>`). Once you have two or more boards, a small **name tag** appears in the top-left corner of the wall: tap it to open the same list.
+- **By voice (or typed in the chat):** "go to the work board", "switch to recipes", "next board" / "previous board", "make a new board called pizza night", "rename this board to Plans", "what boards do I have?", "which board is this?". Deleting is never done by voice.
+- **Keyboard:** **[** and **]** show the previous and next board.
+- **From the phone:** the phone app's menu has **Whiteboard on the wall**: pick one and the wall switches at once (the phone can only choose, not make or delete). Notes sent from the phone, "note ..." and anything JARVIS draws or adds land on the board that is showing.
+- **JARVIS** is told the name of the board in front of you, but it only ever sees that one.
+- Backups (Status menu, board section) follow the board that is showing.
+
+Under the hood: the PC keeps the first board in `data/board.json` and the others in `data/boards/<id>.json`, with `data/boards/index.json` listing their names and which one is showing (so every screen, the phone and a reload agree). `server/store.py`, `web/boards.js`.
+
 ## Speaks first
 
 JARVIS can speak up without being asked, in two cases, both read-only: **"Dentist starts in 10 minutes"** shortly before a calendar event, and **"You have 2 new important emails, from Sam and Alex"** when important mail arrives. It needs Google connected (`connect.bat google`). Turn it on or off, change the minutes, choose whether it speaks aloud and whether your phone is told too, and set quiet hours in the status menu under **Speaks first**. It never reads an email's subject or text (only who it is from), nothing about this goes to an AI, it never repeats a heads-up, it stays quiet from 22:00 to 07:00 (changeable), and it does nothing while the privacy screen is up. Say "Jarvis, don't interrupt me for an hour" (or press **Quiet for 1 hour**) to snooze it. If JARVIS is already talking, the bubble shows at once and the spoken version waits its turn. The engine is `server/nudges.py`.

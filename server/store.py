@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import threading
 import time
@@ -74,6 +75,7 @@ def _write(path: Path, obj) -> None:
     "Permission denied" (a 500 error in the log)."""
     data = json.dumps(obj, indent=2)
     with _write_lock:
+        path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(f".{os.getpid()}.tmp")
         for delay in (*_RETRY_DELAYS, None):
             try:
@@ -254,58 +256,204 @@ def _touch(ids: list[int]) -> None:
 # The board (ink, notes) is kept here so it survives clearing the browser, switching browsers and moving to a new PC
 # (data/ syncs with OneDrive). Backups live outside OneDrive: one every ten minutes while it changes.
 
+# Several named whiteboards: the first one is still data/board.json (id "main", so nothing existing moves), the others are data/boards/<id>.json, and
+# data/boards/index.json lists them (id, name) and says which one is showing. Each board has its own backups (the first in backups/, the others in
+# backups/<id>/). A board is only ever deleted after a last backup of it.
+
 BOARD_FILE = DATA / "board.json"
+BOARDS_DIR = DATA / "boards"
+BOARDS_INDEX = BOARDS_DIR / "index.json"
+MAIN_ID = "main"
+MAX_BOARDS = 30
+MAX_NAME = 40
+_BOARD_ID = re.compile(r"^(main|b-[0-9a-f]{8})$")
 BACKUP_DIR = STATE / "backups"
 BACKUP_EVERY = 600       # seconds between backups while the board is changing
 KEEP_RECENT = 48         # newest backups always kept; older ones are thinned to one per day for KEEP_DAYS
 KEEP_DAYS = 30
-_BACKUP_NAME = re.compile(r"^board-\d{8}-\d{6}(-before-restore)?\.json$")
-_last_backup = {"time": 0.0, "digest": None}
+_BACKUP_NAME = re.compile(r"^board-\d{8}-\d{6}(-before-restore|-before-delete)?\.json$")
+_last_backup = {"time": 0.0, "digest": None}          # the first board's; the others use _other_backups
+_other_backups: dict[str, dict] = {}
 
 
-def load_board() -> dict | None:
+def valid_board_id(board_id: str) -> bool:
+    return isinstance(board_id, str) and bool(_BOARD_ID.match(board_id))
+
+
+def _board_file(board_id: str) -> Path:
+    if not valid_board_id(board_id):
+        raise ValueError("not a board id")
+    return BOARD_FILE if board_id == MAIN_ID else BOARDS_DIR / f"{board_id}.json"
+
+
+def _backup_dir(board_id: str) -> Path:
+    return BACKUP_DIR if board_id == MAIN_ID else BACKUP_DIR / board_id
+
+
+def _backup_state(board_id: str) -> dict:
+    return _last_backup if board_id == MAIN_ID else _other_backups.setdefault(board_id, {"time": 0.0, "digest": None})
+
+
+def clean_board_name(name) -> str:
+    """A board's name: words, single spaces, at most 40 characters. Raises ValueError with a sentence the person can act on."""
+    text = " ".join(str(name or "").split())
+    text = "".join(ch for ch in text if ch.isprintable())[:MAX_NAME].strip()
+    if not text:
+        raise ValueError("Give the board a name.")
+    return text
+
+
+def _default_index() -> dict:
+    return {"boards": [{"id": MAIN_ID, "name": "Main"}], "current": MAIN_ID}
+
+
+def load_index() -> dict:
+    """{boards: [{id, name}], current}. Always has at least one board, and `current` is always one of them."""
+    raw = _read(BOARDS_INDEX, None)
+    boards, seen_ids, seen_names = [], set(), set()
+    for b in (raw.get("boards") if isinstance(raw, dict) else None) or []:
+        try:
+            bid, name = b["id"], clean_board_name(b["name"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not valid_board_id(bid) or bid in seen_ids or name.lower() in seen_names:
+            continue
+        seen_ids.add(bid)
+        seen_names.add(name.lower())
+        boards.append({"id": bid, "name": name})
+    if not boards:
+        return _default_index()
+    current = raw.get("current") if isinstance(raw, dict) else None
+    return {"boards": boards[:MAX_BOARDS], "current": current if current in seen_ids else boards[0]["id"]}
+
+
+def _save_index(index: dict) -> None:
+    _write(BOARDS_INDEX, index)
+
+
+def current_board_id() -> str:
+    return load_index()["current"]
+
+
+def _find(index: dict, key: str) -> dict | None:
+    """A board by id, or by name (any capitals)."""
+    key = str(key or "").strip()
+    return next((b for b in index["boards"] if b["id"] == key or b["name"].lower() == key.lower()), None)
+
+
+def create_board(name: str, switch: bool = True) -> dict:
+    name = clean_board_name(name)
+    with _lock:
+        index = load_index()
+        if len(index["boards"]) >= MAX_BOARDS:
+            raise ValueError(f"That is the most boards ({MAX_BOARDS}). Delete one first.")
+        if any(b["name"].lower() == name.lower() for b in index["boards"]):
+            raise ValueError("There is already a board with that name.")
+        while True:
+            bid = f"b-{secrets.token_hex(4)}"
+            if not any(b["id"] == bid for b in index["boards"]):
+                break
+        index["boards"].append({"id": bid, "name": name})
+        if switch:
+            index["current"] = bid
+        _save_index(index)
+        return index
+
+
+def rename_board(board_id: str, name: str) -> dict:
+    name = clean_board_name(name)
+    with _lock:
+        index = load_index()
+        board = _find(index, board_id)
+        if board is None:
+            raise KeyError("No such board.")
+        if any(b is not board and b["name"].lower() == name.lower() for b in index["boards"]):
+            raise ValueError("There is already a board with that name.")
+        board["name"] = name
+        _save_index(index)
+        return index
+
+
+def set_current_board(board_id: str) -> dict:
+    with _lock:
+        index = load_index()
+        board = _find(index, board_id)
+        if board is None:
+            raise KeyError("No such board.")
+        index["current"] = board["id"]
+        _save_index(index)
+        return index
+
+
+def delete_board(board_id: str) -> dict:
+    """Deletes a board (the last one cannot be). A last backup of it is kept first, in backups/<id>/, as the safety net."""
+    with _lock:
+        index = load_index()
+        board = _find(index, board_id)
+        if board is None:
+            raise KeyError("No such board.")
+        if len(index["boards"]) <= 1:
+            raise ValueError("That is the only board, so it can't be deleted.")
+        path = _board_file(board["id"])
+        data = _read(path, None)
+        if isinstance(data, dict) and (data.get("strokes") or data.get("notes")):
+            _write_backup(data, "-before-delete", board["id"])
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        index["boards"] = [b for b in index["boards"] if b["id"] != board["id"]]
+        if index["current"] == board["id"]:
+            index["current"] = index["boards"][0]["id"]
+        _save_index(index)
+        return index
+
+
+def load_board(board_id: str = MAIN_ID) -> dict | None:
     """The saved board, or None if there is none yet. A busy file raises, so a stale copy is never mistaken for 'empty'."""
-    data = _read(BOARD_FILE, None, strict=True)
+    data = _read(_board_file(board_id), None, strict=True)
     return data if isinstance(data, dict) else None
 
 
-def save_board(board: dict) -> None:
+def save_board(board: dict, board_id: str = MAIN_ID) -> None:
     with _lock:
-        _write(BOARD_FILE, board)
-        _maybe_backup(board)
+        _write(_board_file(board_id), board)
+        _maybe_backup(board, board_id)
 
 
 def _digest(board: dict) -> str:
     return hashlib.sha1(json.dumps([board.get("strokes"), board.get("notes")], sort_keys=True).encode()).hexdigest()
 
 
-def _write_backup(board: dict, suffix: str = "") -> Path:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+def _write_backup(board: dict, suffix: str = "", board_id: str = MAIN_ID) -> Path:
+    folder = _backup_dir(board_id)
+    folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now()
-    while (path := BACKUP_DIR / f"board-{stamp:%Y%m%d-%H%M%S}{suffix}.json").exists():
+    while (path := folder / f"board-{stamp:%Y%m%d-%H%M%S}{suffix}.json").exists():
         stamp += timedelta(seconds=1)  # two backups in the same second must not overwrite each other
     path.write_text(json.dumps(board), "utf-8")
     return path
 
 
-def _maybe_backup(board: dict) -> None:
+def _maybe_backup(board: dict, board_id: str = MAIN_ID) -> None:
     """Takes a backup if the board changed and the last one is old enough, then thins out old ones."""
     try:
         now = time.time()
         digest = _digest(board)
-        if digest == _last_backup["digest"] or now - _last_backup["time"] < BACKUP_EVERY:
+        last = _backup_state(board_id)
+        if digest == last["digest"] or now - last["time"] < BACKUP_EVERY:
             return
         if not board.get("strokes") and not board.get("notes"):
             return  # never spend a backup slot on an empty board
-        _write_backup(board)
-        _last_backup.update(time=now, digest=digest)
-        _prune_backups()
+        _write_backup(board, "", board_id)
+        last.update(time=now, digest=digest)
+        _prune_backups(board_id)
     except OSError as e:
         log.warning("couldn't back up the board: %s", e)
 
 
-def _prune_backups() -> None:
-    files = sorted(BACKUP_DIR.glob("board-*.json"), reverse=True)  # names sort by time, newest first
+def _prune_backups(board_id: str = MAIN_ID) -> None:
+    files = sorted(_backup_dir(board_id).glob("board-*.json"), reverse=True)  # names sort by time, newest first
     seen_days: set[str] = set()
     cutoff = datetime.now() - timedelta(days=KEEP_DAYS)
     for i, path in enumerate(files):
@@ -319,29 +467,30 @@ def _prune_backups() -> None:
             seen_days.add(day)
 
 
-def list_board_backups() -> list[dict]:
-    if not BACKUP_DIR.exists():
+def list_board_backups(board_id: str = MAIN_ID) -> list[dict]:
+    folder = _backup_dir(board_id)
+    if not folder.exists():
         return []
     out = []
-    for path in sorted(BACKUP_DIR.glob("board-*.json"), reverse=True)[:60]:
+    for path in sorted(folder.glob("board-*.json"), reverse=True)[:60]:
         stamp = datetime.strptime(path.name[6:21], "%Y%m%d-%H%M%S")
         out.append({"name": path.name, "time": stamp.isoformat(timespec="seconds"), "kb": max(1, round(path.stat().st_size / 1024))})
     return out
 
 
-def restore_board_backup(name: str) -> dict:
-    """Makes a backup the current board (after backing up what is there now). Returns the restored board."""
+def restore_board_backup(name: str, board_id: str = MAIN_ID) -> dict:
+    """Makes a backup the board's content (after backing up what is there now). Returns the restored board."""
     if not _BACKUP_NAME.match(name):
         raise ValueError("not a backup name")
-    path = BACKUP_DIR / name
+    path = _backup_dir(board_id) / name
     board = json.loads(path.read_text("utf-8"))
     with _lock:
-        current = _read(BOARD_FILE, None)
+        current = _read(_board_file(board_id), None)
         if isinstance(current, dict) and (current.get("strokes") or current.get("notes")):
-            _write_backup(current, "-before-restore")
+            _write_backup(current, "-before-restore", board_id)
         board["savedAt"] = int(time.time() * 1000)
-        _write(BOARD_FILE, board)
-        _last_backup.update(time=time.time(), digest=_digest(board))
+        _write(_board_file(board_id), board)
+        _backup_state(board_id).update(time=time.time(), digest=_digest(board))
     return board
 
 

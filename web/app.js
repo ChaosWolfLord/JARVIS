@@ -25,6 +25,7 @@ import { Files, FinderFolders } from './files.js';
 import { Routines } from './routines.js';
 import { Vision } from './vision.js';
 import { Nudges } from './nudges.js';
+import { Boards } from './boards.js';
 import { News } from './news.js';
 import { ShowOff } from './showoff.js';
 import { Ambient } from './ambient.js';
@@ -327,7 +328,10 @@ widgets.register({ id: 'music', title: 'Music', icon: '🎵', blurb: 'Play YouTu
 widgets.restore();
 Object.assign(window.jarvis, { usage, weather, timers, widgets, system, lights: lightsUI, music: musicUI, sounds, holo, showoff });
 const status = new Status({ button: $('btn-status'), menu: $('status-menu'), banner: $('offline-banner'), board, voice, pen, toast });
-dockMenus([{ button: $('btn-ink'), menu: $('ink-menu') }, { button: $('btn-more'), menu: $('more-menu'), closeOnChoice: true }]);
+dockMenus([{ button: $('btn-ink'), menu: $('ink-menu') }, { button: $('btn-more'), menu: $('more-menu'), closeOnChoice: true }, { button: $('btn-boards'), menu: $('boards-menu'), closeOnChoice: true }]);      // Boards opens from a row in More, or from the name tag
+const boardsUI = new Boards({ board, button: $('btn-boards'), menu: $('boards-menu'), pill: $('board-name'), speak: (t) => voice.speak(t),
+  show: (t) => showBubble(`<p><b>${plain(t)}</b></p>`, 2500) });
+window.jarvis.boards = boardsUI;
 watchDockSize($('toolbar'));
 $('export-png').addEventListener('click', () => status.exportPng());
 $('export-json').addEventListener('click', () => status.exportJson());
@@ -386,6 +390,7 @@ pen.onNotify = (m) => {
   showBubble(`<p><b>${plain(m.title)}</b></p><p>${plain(m.text)}</p>`, 15_000);
   if (m.speak) voice.speak(m.speak);
 };
+pen.onBoards = () => board.sync();                              // a board was added, switched or deleted (from the phone, or another screen)
 pen.onPrivacy = () => privacy.refresh();                       // the phone locked or unlocked the screen
 pen.onNudge = (m) => { ambient.poke(); sounds.play('ok'); nudgesUI.deliver(m); };      // JARVIS speaks first
 window.jarvis.alerts = alerts;
@@ -438,7 +443,7 @@ const privacy = new Privacy({
   onState: (s) => { $('privacy-phone-only').checked = Boolean(s.phone_only); },
 });
 window.jarvis.privacy = privacy;
-voice.special = (command) => privacy.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || routinesUI.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || filesUI.handleVoice(command) || nudgesUI.handleVoice(command) || visionUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
+voice.special = (command) => privacy.handleVoice(command) || boardsUI.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || routinesUI.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || filesUI.handleVoice(command) || nudgesUI.handleVoice(command) || visionUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
 chat.onTyped = (text) => voice.special(text);       // typing "show off", "lights off"... in the chat box works like saying it
 $('privacy-lock').addEventListener('click', () => privacy.lock());
 $('privacy-phone-only').addEventListener('change', async (e) => {
@@ -538,6 +543,8 @@ document.addEventListener('keydown', (e) => {
   if (key === 'p') setTool('pen');
   else if (key === 'e') setTool('eraser');
   else if (key === 'n') { e.preventDefault(); board.addNote({ color: board.color }); }
+  else if (key === '[') board.step(-1);                          // the previous whiteboard
+  else if (key === ']') board.step(1);                           // the next one
   else if (key === 'f') toggleFullscreen();
   else if (key === 'm') voice.toggle();
   else if (key === 'l') toggleLights();

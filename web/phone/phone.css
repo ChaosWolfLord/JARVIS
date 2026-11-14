@@ -164,3 +164,6 @@ input.switch:focus-visible { outline: 2px solid rgba(var(--accent), 0.7); outlin
 #lock-keys button { height: 58px; font-size: 22px; color: var(--white); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
 #lock-keys button:active { background: rgba(var(--accent), 0.25); }
 #lock-keys button.ok { background: rgba(var(--accent), 0.3); border-color: rgba(var(--accent), 0.6); font-size: 16px; }
+
+/* which whiteboard the wall shows */
+#opt-board { max-width: 46%; height: 40px; padding: 0 10px; font-size: 16px; color: var(--white); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }

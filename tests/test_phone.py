@@ -338,7 +338,7 @@ class Page(unittest.TestCase):
     def test_the_phone_door_has_no_other_routes(self):
         app = phone.build_app(phone.Phones(Path(tempfile.mkdtemp()) / "p.json"), lambda *a, **k: iter(()), lambda e: None)
         paths = sorted({r.path for r in app.routes})
-        self.assertEqual(paths, ["/", "/brain.js", "/brain/sync", "/chat", "/events", "/jarvis.apk", "/keys", "/look", "/orb.js", "/pair", "/phone.css", "/phone.js", "/picture", "/ping", "/privacy", "/privacy/lock", "/privacy/unlock", "/reminders/sync", "/remote", "/remote/status", "/routines", "/routines/run", "/share"])
+        self.assertEqual(paths, ["/", "/boards", "/boards/switch", "/brain.js", "/brain/sync", "/chat", "/events", "/jarvis.apk", "/keys", "/look", "/orb.js", "/pair", "/phone.css", "/phone.js", "/picture", "/ping", "/privacy", "/privacy/lock", "/privacy/unlock", "/reminders/sync", "/remote", "/remote/status", "/routines", "/routines/run", "/share"])
 
 
 if __name__ == "__main__":

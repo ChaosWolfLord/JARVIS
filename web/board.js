@@ -13,7 +13,9 @@ export const H = 1080;
 // The ink colours follow the chosen look; app.js refreshes these values in place when the look is switched, then redraws.
 export const COLORS = { ...inkPalette() };
 
-const STORE_KEY = 'jarvis.board.v1';
+const STORE_KEY = 'jarvis.board.v1';                      // the first board; the others add their id (see storeKey)
+const CURRENT_KEY = 'jarvis.board.current';               // which board was showing, so a reload opens on it at once
+const MAIN_ID = 'main';
 const MAX_W = 5120; // an ultra-wide window won't stretch the board past this
 const NOTE_W = 260;
 const MAX_UNDO = 100;
@@ -123,6 +125,14 @@ export class Board {
     this.pad = 0;   // (w - W) / 2: the extra room on each side of the home area
     this.onLayout = null;
     this.saveTimer = null;
+    // Several named whiteboards: the PC keeps them all and says which one is showing. This page holds the one being shown.
+    this.id = MAIN_ID;
+    try { this.id = localStorage.getItem(CURRENT_KEY) || MAIN_ID; } catch { /* the first board */ }
+    this.boards = [{ id: this.id, name: this.id === MAIN_ID ? 'Main' : 'Board' }];      // replaced by the PC's list as soon as it answers
+    this.onBoards = null;                                    // (list, currentId) => void: the list or the board that is showing changed
+    this.onSwitched = null;                                  // ({id, name, remote}) => void: another board is now showing
+    this.dirty = false;                                      // something changed that the PC has not got yet
+    this.switching = false;
 
     this.load();
     this.bindPointer();
@@ -528,7 +538,13 @@ export class Board {
     this.onSaveState?.(state);
   }
 
+  /** Where this page keeps its own copy of a board. */
+  storeKey(id = this.id) { return id === MAIN_ID ? STORE_KEY : `${STORE_KEY}.${id}`; }
+
+  get name() { return this.boards.find((b) => b.id === this.id)?.name || 'Board'; }
+
   save() {
+    this.dirty = true;
     this.savedAt = Date.now();
     this.setSaveState('saving');
     clearTimeout(this.saveTimer);
@@ -539,15 +555,19 @@ export class Board {
 
   writeLocal() {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(this.payload()));
+      localStorage.setItem(this.storeKey(), JSON.stringify(this.payload()));
     } catch { /* storage unavailable: the server copy still holds it */ }
   }
 
   async push() {
     clearTimeout(this.pushTimer);
+    const id = this.id;
+    const sent = this.savedAt;
     try {
-      const res = await fetch('/api/board', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.payload()) });
+      const res = await fetch(`/api/board?id=${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.payload()) });
+      if (res.status === 404) { this.dirty = false; this.sync(); return; }      // that board was deleted on another screen: show what is there now
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (this.id === id && this.savedAt === sent) this.dirty = false;
       this.setSaveState('saved');
     } catch {
       this.setSaveState('offline');
@@ -555,15 +575,40 @@ export class Board {
     }
   }
 
-  /** Adopts the server's copy if it is the newer one, or uploads this page's copy if that is newer. */
-  async sync() {
-    if (this.drawing) return;
+  /** Asks the PC which boards there are and which one is showing; the page's list follows. Returns it, or null when the PC does not answer. */
+  async refreshList() {
     try {
-      const res = await fetch('/api/board');
+      const res = await fetch('/api/boards');
+      if (!res.ok) return null;
+      const index = await res.json();
+      if (!Array.isArray(index.boards) || !index.boards.length) return null;
+      this.boards = index.boards;
+      this.onBoards?.(this.boards, this.id, index.current);
+      return index;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Looks at the PC: switches to the board that is showing there (it may have been changed from the phone or another screen), then
+   *  adopts the PC's copy of this board if it is the newer one, or uploads this page's copy if that is newer. */
+  async sync() {
+    if (this.drawing || this.switching) return;
+    const index = await this.refreshList();
+    if (index && index.current !== this.id) { await this.switchTo(index.current, { remote: true }); return; }
+    await this.pull();
+  }
+
+  async pull() {
+    const id = this.id;
+    try {
+      const res = await fetch(`/api/board?board=${encodeURIComponent(id)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { board } = await res.json();
+      if (this.id !== id) return;                            // another board was chosen while this was loading
       if (board && (board.savedAt || 0) >= this.savedAt) {
         if (board.savedAt !== this.savedAt) this.applyData(board);
+        this.dirty = false;
         this.setSaveState('saved');
       } else if (this.strokes.length || this.notes.length || this.savedAt) {
         await this.push();
@@ -573,6 +618,50 @@ export class Board {
     } catch {
       this.setSaveState('offline');
     }
+  }
+
+  /** Shows another board. What is on this one is saved first. `remote`: the PC already says this is the board showing, so it is not told again. */
+  async switchTo(key, { remote = false } = {}) {
+    const target = this.boards.find((b) => b.id === key || b.name.toLowerCase() === String(key).toLowerCase());
+    if (!target || target.id === this.id || this.switching) return false;
+    this.switching = true;
+    try {
+      this.penUp();                                          // a stroke in progress belongs to this board
+      clearTimeout(this.saveTimer);
+      this.writeLocal();
+      if (this.dirty) { clearTimeout(this.pushTimer); await this.push(); }
+      if (!remote) {
+        const res = await fetch('/api/boards/current', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: target.id }) });
+        if (!res.ok) return false;
+      }
+      this.id = target.id;
+      try { localStorage.setItem(CURRENT_KEY, this.id); } catch { /* a reload opens on the PC's choice */ }
+      this.strokes = [];
+      this.notes = [];
+      this.nextId = 1;
+      this.savedAt = 0;
+      this.dirty = false;
+      this.undoStack = [];
+      this.redoStack = [];
+      this.load();                                           // this board's copy in the page, shown at once
+      this.redraw();
+      this.renderNotes();
+      this.onBoards?.(this.boards, this.id, this.id);
+      this.onSwitched?.({ id: this.id, name: target.name, remote });
+    } catch {
+      return false;
+    } finally {
+      this.switching = false;
+    }
+    await this.pull();
+    return true;
+  }
+
+  /** The next board in the list (step 1) or the previous one (step -1), wrapping round. */
+  step(delta) {
+    const i = this.boards.findIndex((b) => b.id === this.id);
+    if (this.boards.length < 2 || i < 0) return Promise.resolve(false);
+    return this.switchTo(this.boards[(i + delta + this.boards.length) % this.boards.length].id);
   }
 
   /** Replaces what is on the board with saved data (from the server, or a restored backup). */
@@ -591,7 +680,7 @@ export class Board {
   load() {
     this.savedAt = 0;
     try {
-      const data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      const data = JSON.parse(localStorage.getItem(this.storeKey()) || 'null');
       if (!data) return;
       this.strokes = data.strokes || [];
       this.notes = data.notes || [];
@@ -660,6 +749,7 @@ export class Board {
     }
     return {
       png: c.toDataURL('image/png').split(',')[1],
+      name: this.name,
       notes: this.notes.map((n) => ({ id: n.id, text: n.text, x: Math.round(n.x / K), y: Math.round(n.y / K) })),
     };
   }

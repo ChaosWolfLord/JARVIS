@@ -260,7 +260,7 @@ export class Status {
 
   async showBackups() {
     try {
-      this.backups = await (await fetch('/api/board/backups')).json();
+      this.backups = await (await fetch(`/api/board/backups?board=${encodeURIComponent(this.board.id)}`)).json();
     } catch {
       this.toast('Couldn’t reach the server for the backups.');
       return;
@@ -271,7 +271,7 @@ export class Status {
 
   async restore(name) {
     try {
-      const res = await fetch('/api/board/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      const res = await fetch('/api/board/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, board: this.board.id }) });
       if (!res.ok) throw new Error(String(res.status));
       this.board.applyData((await res.json()).board);
       this.board.setSaveState('saved');

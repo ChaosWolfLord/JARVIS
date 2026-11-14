@@ -60,6 +60,7 @@ async def lifespan(_app):
             local_command=lambda text: localcmd.handle(text, tell_page),
             routines=_Routines(),
             privacy_door=_PrivacyDoor(),
+            boards=_Boards(),
             on_events_connect=lambda: courier.deliver_due(),      # a phone just opened its page: hand over reminders that were waiting for it
             port=int(os.getenv("JARVIS_PHONE_PORT", "8443")),
             tls=os.getenv("JARVIS_PHONE_TLS", "1") != "0",
@@ -166,6 +167,19 @@ def _phone_ready() -> bool:
 privacy.phone_ready = _phone_ready
 
 
+class _Boards:
+    """What the phone door may do with the whiteboards: see their names and switch the one on the wall (never create, rename or delete)."""
+
+    def list(self) -> dict:
+        return store.load_index()
+
+    def switch(self, key: str) -> dict:
+        index = store.set_current_board(key)                       # raises KeyError for a board that is not there
+        audit.record("boards", "switched (from the phone)")
+        tell_pages({"type": "boards"})
+        return index
+
+
 class _Routines:
     """What the phone door may do with routines: list them, and run one by its id (it can never change them)."""
 
@@ -270,6 +284,7 @@ class Note(BaseModel):
 class Board(BaseModel):
     png: str | None = None
     notes: list[Note] = []
+    name: str = Field(default="", max_length=60)      # the whiteboard's name, as a label for the AI
 
 
 class ChatRequest(BaseModel):
@@ -701,39 +716,114 @@ class BoardIn(BaseModel):
 
 class RestoreRequest(BaseModel):
     name: str = Field(max_length=80)
+    board: str | None = Field(default=None, max_length=20)
+
+
+def _board_id(board: str | None) -> str:
+    """The board a request is about: the one named, or the one showing. 404 for one that does not exist (it may have been deleted from another screen)."""
+    index = store.load_index()
+    bid = board or index["current"]
+    if not store.valid_board_id(bid) or not any(b["id"] == bid for b in index["boards"]):
+        raise HTTPException(404, "No such board.")
+    return bid
 
 
 @app.get("/api/board")
-def get_board():
-    """The saved whiteboard ({strokes, notes, nextId, savedAt}), or {"board": null} if nothing is saved yet."""
+def get_board(board: str | None = Query(default=None, max_length=20)):
+    """A saved whiteboard ({strokes, notes, nextId, savedAt}), or {"board": null} if nothing is saved yet. Without `board`, the one that is showing."""
+    bid = _board_id(board)
     try:
-        return {"board": store.load_board()}
+        return {"board": store.load_board(bid), "id": bid}
     except OSError:
         raise HTTPException(503, "The board file is busy right now. Try again in a moment.") from None
 
 
 @app.put("/api/board")
-def put_board(board: BoardIn):
+def put_board(board: BoardIn, id: str | None = Query(default=None, max_length=20)):
+    bid = _board_id(id)
     data = board.model_dump()
     data["savedAt"] = data["savedAt"] or int(time.time() * 1000)
     try:
-        store.save_board(data)
+        store.save_board(data, bid)
     except OSError:
         raise HTTPException(503, "Couldn't write the board file. Try again in a moment.") from None
     return {"ok": True, "savedAt": data["savedAt"]}
 
 
 @app.get("/api/board/backups")
-def board_backups():
-    return store.list_board_backups()
+def board_backups(board: str | None = Query(default=None, max_length=20)):
+    return store.list_board_backups(_board_id(board))
 
 
 @app.post("/api/board/restore")
 def restore_board(req: RestoreRequest):
+    bid = _board_id(req.board)
     try:
-        return {"board": store.restore_board_backup(req.name)}
+        return {"board": store.restore_board_backup(req.name, bid)}
     except (ValueError, OSError):
         raise HTTPException(404, "No such backup.") from None
+
+
+# ---- several whiteboards -------------------------------------------------------------------------------------------------------
+
+class BoardName(BaseModel):
+    name: str = Field(max_length=200)
+    switch: bool = True
+
+
+class BoardChoice(BaseModel):
+    id: str = Field(max_length=60)       # an id, or a board's name
+
+
+def _boards_changed(what: str, name: str = "") -> dict:
+    audit.record("boards", f"{what}: {name}"[:100])
+    tell_pages({"type": "boards"})        # every open page looks again (the wall, another browser tab)
+    return store.load_index()
+
+
+@app.get("/api/boards")
+def boards_list():
+    return store.load_index()
+
+
+@app.post("/api/boards")
+def boards_create(req: BoardName):
+    try:
+        index = store.create_board(req.name, req.switch)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return _boards_changed("created", req.name) | {"created": index["boards"][-1]["id"]}
+
+
+@app.post("/api/boards/current")
+def boards_switch(req: BoardChoice):
+    try:
+        index = store.set_current_board(req.id)
+    except KeyError:
+        raise HTTPException(404, "No such board.") from None
+    return _boards_changed("switched", next(b["name"] for b in index["boards"] if b["id"] == index["current"]))
+
+
+@app.post("/api/boards/{board_id}/rename")
+def boards_rename(board_id: str, req: BoardName):
+    try:
+        store.rename_board(board_id, req.name)
+    except KeyError:
+        raise HTTPException(404, "No such board.") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return _boards_changed("renamed", req.name)
+
+
+@app.delete("/api/boards/{board_id}")
+def boards_delete(board_id: str):
+    try:
+        store.delete_board(board_id)
+    except KeyError:
+        raise HTTPException(404, "No such board.") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return _boards_changed("deleted", board_id)
 
 
 @app.get("/api/mcp")

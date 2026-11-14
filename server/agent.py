@@ -788,12 +788,18 @@ def build_system(message: str = "", summary: str = "", groups: set[str] | None =
     return f"{text.replace('@@CHARACTER@@', persona.character())}\nToday is {datetime.now():%A %d %B %Y}, and the local time is {datetime.now():%H:%M}.\n\nWhat you know about the user:\n{known}{more}{earlier}"
 
 
+def _board_name(board: dict | None) -> str:
+    """The whiteboard's name, when there are several ("Work"): only used as a label, never as an instruction."""
+    name = " ".join(str((board or {}).get("name") or "").split())[:40]
+    return f' "{name}"' if name else ""
+
+
 def _board_context(board: dict | None) -> str:
     notes = (board or {}).get("notes") or []
     if not notes:
-        return "Sticky notes on the board: none."
+        return f"Sticky notes on the board{_board_name(board)}: none."
     lines = [f'- note {n["id"]} at ({n["x"]},{n["y"]}): {n["text"]}' for n in notes]
-    return "Sticky notes on the board (top-left corner positions):\n" + "\n".join(lines)
+    return f"Sticky notes on the board{_board_name(board)} (top-left corner positions):\n" + "\n".join(lines)
 
 
 def _user_content(message: str, board: dict | None) -> list[dict] | str:

@@ -198,6 +198,7 @@
       </div>
     </aside>
     <main id="stage">
+      <button type="button" id="board-name" hidden title="Which whiteboard this is. Tap to switch."></button>
       <div id="sidelight" aria-hidden="true"><i class="l"></i><i class="r"></i></div>
       <div id="board">
         <canvas id="ink"></canvas>
@@ -379,6 +380,7 @@
           <p class="wm-hint">Drag a card by its title to move it, and its corner to resize it.</p>
           <button type="button" id="widget-reset">Reset layout</button>
         </div>
+        <div id="boards-menu" class="dock-menu" hidden aria-label="Whiteboards"></div>
         <div id="ink-menu" class="dock-menu" hidden>
           <h3>Pen</h3>
           <div id="swatches" role="group" aria-label="Pen colour"></div>
@@ -386,6 +388,10 @@
         </div>
         <div id="more-menu" class="dock-menu" hidden>
           <h3>More</h3>
+          <button type="button" class="menu-row" id="btn-boards" aria-haspopup="true" aria-expanded="false" title="Whiteboards: switch, add or rename">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5L12 3l9 4.5-9 4.5z"/><path d="M3 12l9 4.5 9-4.5"/><path d="M3 16.5L12 21l9-4.5"/></svg>
+            <span><b>Whiteboards</b><small>Switch to another whiteboard, or make one. Each has a name.</small></span>
+          </button>
           <button type="button" class="menu-row" id="btn-memory">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6c0 2 1 3 2 4v3h8v-3c1-1 2-2 2-4a6 6 0 0 0-6-6z"/><path d="M9 19h6M10 22h4"/></svg>
             <span><b>Memory</b><small>What JARVIS remembers about you. Add or remove facts.</small></span>

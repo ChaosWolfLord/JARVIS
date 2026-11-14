@@ -87,6 +87,11 @@ class RoutinesAndFiles(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertIn("ok   ", run.stdout)
 
+    def test_the_whiteboards_are_switched_by_voice_only_when_asked(self):
+        run = subprocess.run(["node", "tests/js/boards.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)
+
     def test_jarvis_speaks_first_only_when_it_is_quiet(self):
         run = subprocess.run(["node", "tests/js/nudges.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

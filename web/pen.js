@@ -88,6 +88,7 @@ export class PenInput {
       case 'command': this.onCommand?.(m.text); break;           // the phone asked for something only this page can do (show off)
       case 'phone_event': this.onPhoneEvent?.(m.event); break;   // the phone's answer changed the wall (a note, a timer, a widget...)
       case 'reminder': this.onReminder?.(m); break;           // a saved reminder came due (the server keeps them, so one that was missed arrives late)
+      case 'boards': this.onBoards?.(); break;                   // the whiteboards changed: look at the list and the board that is showing
       case 'privacy': this.onPrivacy?.(); break;                 // the privacy screen was switched from the phone: look at its state now
       case 'nudge': this.onNudge?.(m); break;                   // JARVIS speaks first: a calendar or important-mail heads-up
       case 'notify': this.onNotify?.(m); break;             // a program on the PC (the Claude Code hook) wants JARVIS to announce something

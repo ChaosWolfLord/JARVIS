@@ -385,7 +385,28 @@ $('menu-btn').addEventListener('click', () => {
   const open = $('menu').hidden;
   $('menu').hidden = !open;
   $('menu-btn').setAttribute('aria-expanded', String(open));
-  if (open && !LOCAL) loadRoutines();
+  if (open && !LOCAL) { loadRoutines(); loadBoards(); }
+});
+
+// Which whiteboard the wall shows (made, renamed and deleted on the PC; the phone only chooses).
+async function loadBoards() {
+  try {
+    const res = await api('/boards');
+    if (!res.ok) return;
+    const { boards = [], current = '' } = await res.json();
+    $('board-row').hidden = boards.length < 2;
+    $('opt-board').replaceChildren(...boards.map((b) => Object.assign(document.createElement('option'), { value: b.id, textContent: b.name, selected: b.id === current })));
+  } catch { /* the PC is out of reach: leave the list as it is */ }
+}
+
+$('opt-board').addEventListener('change', async (e) => {
+  const picked = e.target.selectedOptions[0]?.textContent || 'that board';
+  try {
+    const res = await api('/boards/switch', { method: 'POST', body: JSON.stringify({ id: e.target.value }) });
+    $('board-note').textContent = res.ok ? `The wall now shows ${picked}.` : 'Could not switch the wall just now.';
+  } catch {
+    $('board-note').textContent = 'Could not reach your PC.';
+  }
 });
 
 // Routines made on the PC (status menu, Routines): listed here so one tap runs them. They can only be started from the phone, never changed.

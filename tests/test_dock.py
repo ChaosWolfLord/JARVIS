@@ -87,7 +87,7 @@ class Clarity(unittest.TestCase):
     def test_rarely_used_buttons_are_in_more_each_with_a_line_saying_what_they_do(self):
         more = re.search(r'<div id="more-menu".*?</div>\s*<button id="btn-mic"', INDEX, re.S).group(0)
         rows = re.findall(r'<button type="button" class="menu-row[^"]*" id="([^"]+)".*?<b>(.*?)</b><small>(.*?)</small>', more, re.S)
-        self.assertEqual([r[0] for r in rows], ["btn-memory", "btn-kb", "btn-touch", "btn-pen", "btn-fit", "btn-lights", "btn-full"])
+        self.assertEqual([r[0] for r in rows], ["btn-boards", "btn-memory", "btn-kb", "btn-touch", "btn-pen", "btn-fit", "btn-lights", "btn-full"])
         for ident, name, line in rows:
             self.assertTrue(name.strip() and len(line.strip()) > 12, ident)
 
