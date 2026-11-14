@@ -230,6 +230,24 @@ class Pages(unittest.TestCase):
         self.assertIn("this.penUp()", switch)
         self.assertIn("if (this.id !== id) return;", js[js.index("async pull()"):])                 # a late answer for another board is dropped
 
+    def test_the_switch_animation_never_gets_in_the_way(self):
+        js = (ROOT / "web" / "board.js").read_text(encoding="utf-8")
+        switch = js[js.index("async switchTo"):js.index("async performSwitch")]
+        self.assertIn("this.ready && from >= 0 && this.flip?.canPlay()", switch)         # not on page load, not for a deleted board
+        self.assertIn("flight.arrive(ok ? to : from)", switch)                          # a refused switch flies back to where it was
+        self.assertLess(switch.index("this.performSwitch"), switch.index("flight.arrive"))     # the real switch happens underneath
+        self.assertIn("this.switching = false", switch)
+        self.assertIn("resyncWanted", js[js.index("async sync()"):js.index("async pull()")])      # a change from the phone during the animation is not lost
+        flip = (ROOT / "web" / "boardflip.js").read_text(encoding="utf-8")
+        self.assertIn("document.hidden", flip)
+        self.assertIn("prefers-reduced-motion", flip)
+        self.assertNotIn("requestAnimationFrame", flip)                                 # a throttled background page must not stall it
+        self.assertIn("setTimeout(() => this.land(this.from), 8000)", flip)             # and it can never get stuck
+        css = (ROOT / "web" / "dock.css").read_text(encoding="utf-8")
+        self.assertIn("#board.board-flipping #ink", css)
+        app = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("board.flip = new BoardFlip({ board })", app)
+
     def test_the_wall_looks_again_when_the_boards_change(self):
         app = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         self.assertIn("pen.onBoards = () => board.sync()", app)

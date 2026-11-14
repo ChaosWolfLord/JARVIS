@@ -133,6 +133,10 @@ export class Board {
     this.onSwitched = null;                                  // ({id, name, remote}) => void: another board is now showing
     this.dirty = false;                                      // something changed that the PC has not got yet
     this.switching = false;
+    this.ready = false;                                      // the first look at the PC is done (until then a switch is not animated)
+    this.resyncWanted = false;                               // the PC changed something while a switch was playing
+    this.flip = null;                                        // BoardFlip: the animation between boards (set by the page)
+    this.copies = new Map();                                 // id -> the last copy of another board seen, for the showcase
 
     this.load();
     this.bindPointer();
@@ -593,10 +597,15 @@ export class Board {
   /** Looks at the PC: switches to the board that is showing there (it may have been changed from the phone or another screen), then
    *  adopts the PC's copy of this board if it is the newer one, or uploads this page's copy if that is newer. */
   async sync() {
-    if (this.drawing || this.switching) return;
-    const index = await this.refreshList();
-    if (index && index.current !== this.id) { await this.switchTo(index.current, { remote: true }); return; }
-    await this.pull();
+    if (this.drawing) return;
+    if (this.switching) { this.resyncWanted = true; return; }          // looked at again as soon as the switch that is playing ends
+    try {
+      const index = await this.refreshList();
+      if (index && index.current !== this.id) { await this.switchTo(index.current, { remote: true }); return; }
+      await this.pull();
+    } finally {
+      this.ready = true;
+    }
   }
 
   async pull() {
@@ -620,13 +629,37 @@ export class Board {
     }
   }
 
-  /** Shows another board. What is on this one is saved first. `remote`: the PC already says this is the board showing, so it is not told again. */
+  /** Shows another board. What is on this one is saved first. `remote`: the PC already says this is the board showing, so it is not told again.
+   *  The switch is animated (see boardflip.js) while it happens underneath; the board is only shown once it has arrived. */
   async switchTo(key, { remote = false } = {}) {
     const target = this.boards.find((b) => b.id === key || b.name.toLowerCase() === String(key).toLowerCase());
     if (!target || target.id === this.id || this.switching) return false;
     this.switching = true;
+    this.penUp();                                            // a stroke in progress belongs to this board
+    const from = this.boards.findIndex((b) => b.id === this.id);
+    const to = this.boards.indexOf(target);
+    let flight = null;
     try {
-      this.penUp();                                          // a stroke in progress belongs to this board
+      flight = this.ready && from >= 0 && this.flip?.canPlay() ? this.flip.start({ boards: this.boards, from, to }) : null;
+    } catch { flight = null; }
+    let ok = false;
+    let pulled = null;
+    try {
+      ok = await this.performSwitch(target, remote);
+      if (ok) pulled = this.pull();                          // the PC's copy of the board is fetched while the animation plays
+    } finally {
+      if (flight) await flight.arrive(ok ? to : from).catch(() => {});
+      this.switching = false;
+    }
+    if (pulled) await pulled;
+    if (this.resyncWanted) { this.resyncWanted = false; this.sync(); }
+    return ok;
+  }
+
+  /** The switch itself, without the animation: saves this board, tells the PC, and loads the other one. */
+  async performSwitch(target, remote) {
+    try {
+      this.penUp();
       clearTimeout(this.saveTimer);
       this.writeLocal();
       if (this.dirty) { clearTimeout(this.pushTimer); await this.push(); }
@@ -648,13 +681,55 @@ export class Board {
       this.renderNotes();
       this.onBoards?.(this.boards, this.id, this.id);
       this.onSwitched?.({ id: this.id, name: target.name, remote });
+      return true;
     } catch {
       return false;
-    } finally {
-      this.switching = false;
     }
-    await this.pull();
-    return true;
+  }
+
+  // ---- pictures of boards, for the showcase when switching -----------------------------------------------------------------
+  /** This page's own copy of a board that is not showing (from when it was last open here), or null. */
+  localCopy(id) {
+    try { return JSON.parse(localStorage.getItem(this.storeKey(id)) || 'null') || this.copies.get(id) || null; } catch { return this.copies.get(id) || null; }
+  }
+
+  /** The PC's copy of a board (for its picture); null when it can't be had in a few seconds. */
+  async fetchCopy(id) {
+    try {
+      const res = await fetch(`/api/board?board=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) return null;
+      const { board } = await res.json();
+      if (board) this.copies.set(id, board);
+      return board || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Draws a small picture of a board (its ink and notes; `data` null means the one on screen) into a canvas. */
+  paintPreview(canvas, data = null) {
+    const k = canvas.width / this.w;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(k, 0, 0, k, this.pad * k, 0);
+    const strokes = data ? data.strokes || [] : this.strokes;
+    const notes = data ? data.notes || [] : this.notes;
+    for (const s of strokes) drawStroke(ctx, s, 1, true);
+    ctx.font = '24px "Segoe UI", sans-serif';
+    ctx.textBaseline = 'top';
+    for (const n of notes) {
+      const lines = wrapText(ctx, n.text, NOTE_W - 24);
+      const h = Math.max(110, lines.length * 30 + 44);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#001218';
+      ctx.fillRect(n.x, n.y, NOTE_W, h);
+      ctx.strokeStyle = COLORS[n.color] || COLORS.cyan;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(n.x, n.y, NOTE_W, h);
+      ctx.fillStyle = COLORS.white;
+      lines.forEach((line, i) => ctx.fillText(line, n.x + 12, n.y + 34 + i * 30));
+    }
   }
 
   /** The next board in the list (step 1) or the previous one (step -1), wrapping round. */

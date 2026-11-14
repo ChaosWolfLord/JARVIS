@@ -308,6 +308,7 @@ You can have as many named whiteboards as you like (up to 30) and switch between
 - **From the phone:** the phone app's menu has **Whiteboard on the wall**: pick one and the wall switches at once (the phone can only choose, not make or delete). Notes sent from the phone, "note ..." and anything JARVIS draws or adds land on the board that is showing.
 - **JARVIS** is told the name of the board in front of you, but it only ever sees that one.
 - Backups (Status menu, board section) follow the board that is showing.
+- **The switch is animated** (about two seconds): the board you are on pulls back into a showcase of all your boards (each shown as a small picture with its name), the showcase slides to the one you chose, and that board flies forward and comes to a gentle stop, filling the wall. It was designed as an interactive prototype in Claude Design first. It plays when you switch from the menu, by voice, with the keys or from the phone; not when the page first opens, not while the page is in the background, and not if your computer is set to reduce motion. Switch it off under **More > Whiteboards > Animate switching between boards**. Code: `web/boardflip.js`.
 
 Under the hood: the PC keeps the first board in `data/board.json` and the others in `data/boards/<id>.json`, with `data/boards/index.json` listing their names and which one is showing (so every screen, the phone and a reload agree). `server/store.py`, `web/boards.js`.
 
