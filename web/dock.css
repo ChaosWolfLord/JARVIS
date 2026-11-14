@@ -155,13 +155,20 @@ body.ambient #toolbar .dock-menu, body.ambient #orb-label { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { #toolbar .dock-btn { transition: none; } }
 
 /* ---- several whiteboards: the name tag on the wall and the Boards menu ---- */
-#board-name {
-  position: absolute; left: 14px; top: 12px; z-index: 5; max-width: 40%; height: 30px; padding: 0 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 14px; letter-spacing: 0.4px; color: var(--white); background: rgba(2, 14, 20, 0.7); border: 1px solid rgba(var(--accent-rgb), 0.45); border-radius: 999px; cursor: pointer;
+#board-bar {
+  position: absolute; left: 14px; top: 12px; z-index: 5; max-width: 46%; display: flex; align-items: stretch; height: 32px; overflow: hidden;
+  background: rgba(2, 14, 20, 0.7); border: 1px solid rgba(var(--accent-rgb), 0.45); border-radius: 999px;
 }
-#board-name[hidden] { display: none; }
-#board-name:hover { background: rgba(var(--accent-rgb), 0.18); }
-body.touch #board-name { height: 44px; font-size: 18px; padding: 0 18px; }
+#board-bar[hidden] { display: none; }
+#board-bar button { display: grid; place-items: center; padding: 0; margin: 0; border: 0; background: none; color: var(--white); cursor: pointer; font-size: 14px; letter-spacing: 0.4px; }
+#board-bar button:hover { background: rgba(var(--accent-rgb), 0.18); }
+#board-bar button:focus-visible { outline: 2px solid var(--white); outline-offset: -3px; }
+#board-bar #board-prev, #board-bar #board-next { width: 34px; }
+#board-bar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#board-bar #board-name { min-width: 0; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-left: 1px solid rgba(var(--accent-rgb), 0.25); border-right: 1px solid rgba(var(--accent-rgb), 0.25); }
+body.touch #board-bar { height: 46px; }
+body.touch #board-bar #board-name { font-size: 18px; padding: 0 14px; }
+body.touch #board-bar #board-prev, body.touch #board-bar #board-next { width: 50px; }
 #toolbar #boards-menu { left: 14px; right: auto; width: 360px; }
 #boards-menu .boards-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 #toolbar #boards-menu .board-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 44px; }

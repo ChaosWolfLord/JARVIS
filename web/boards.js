@@ -56,12 +56,13 @@ export function parseBoardCommand(text, names = []) {
 const el = (tag, text, cls) => Object.assign(document.createElement(tag), text == null ? {} : { textContent: text }, cls ? { className: cls } : {});
 
 export class Boards {
-  /** board: the Board. button/menu: the bar's button and its menu. pill: the name tag on the wall. speak/show: say a line / put it in the bubble. */
-  constructor({ board, button, menu, pill, speak = () => {}, show = () => {} }) {
+  /** board: the Board. button/menu: the bar's button and its menu. pill: the name on the wall; bar, prev and next: its frame and its two arrows. speak/show: say a line / put it in the bubble. */
+  constructor({ board, button, menu, pill, bar = null, prev = null, next = null, speak = () => {}, show = () => {} }) {
     this.board = board;
     this.button = button;
     this.menu = menu;
     this.pill = pill;
+    this.bar = bar || pill;
     this.speak = speak;
     this.show = show;
     this.confirming = false;
@@ -69,6 +70,8 @@ export class Boards {
     this.build();
     board.onBoards = () => this.render();
     board.onSwitched = ({ name, remote }) => { this.show(`Board: ${name}`); this.confirming = false; if (remote) this.render(); };
+    prev?.addEventListener('click', (e) => { e.stopPropagation(); this.board.step(-1); });         // the arrows beside the name
+    next?.addEventListener('click', (e) => { e.stopPropagation(); this.board.step(1); });
     pill?.addEventListener('click', (e) => { e.stopPropagation(); button.click(); });      // not on to the page, whose "click outside" would close the menu again
     this.render();
   }
@@ -115,7 +118,7 @@ export class Boards {
     this.deleteBtn.textContent = this.confirming ? `Really delete “${this.board.name}”?` : 'Delete this board';
     this.deleteBtn.disabled = boards.length < 2;
     if (this.pill) {
-      this.pill.hidden = boards.length < 2;                  // with one board there is nothing to tell apart
+      this.bar.hidden = boards.length < 2;                   // with one board there is nothing to tell apart or to step between
       this.pill.textContent = this.board.name;
     }
     this.button.title = `Whiteboards: ${this.board.name}. Switch, add or rename (or say “next board”; [ and ] on the keyboard)`;

@@ -248,6 +248,16 @@ class Pages(unittest.TestCase):
         app = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         self.assertIn("board.flip = new BoardFlip({ board })", app)
 
+    def test_the_name_on_the_wall_has_an_arrow_each_side(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        bar = html[html.index('id="board-bar"'):html.index('id="sidelight"')]
+        self.assertLess(bar.index('id="board-prev"'), bar.index('id="board-name"'))
+        self.assertLess(bar.index('id="board-name"'), bar.index('id="board-next"'))
+        boards = (ROOT / "web" / "boards.js").read_text(encoding="utf-8")
+        self.assertIn("this.board.step(-1)", boards)
+        self.assertIn("this.board.step(1)", boards)
+        self.assertIn("this.bar.hidden = boards.length < 2", boards)               # no arrows to press with a single board
+
     def test_an_older_running_jarvis_is_explained_not_just_method_not_allowed(self):
         js = (ROOT / "web" / "boards.js").read_text(encoding="utf-8")
         self.assertIn("res.status === 405", js)

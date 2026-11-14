@@ -331,7 +331,7 @@ Object.assign(window.jarvis, { usage, weather, timers, widgets, system, lights: 
 const status = new Status({ button: $('btn-status'), menu: $('status-menu'), banner: $('offline-banner'), board, voice, pen, toast });
 dockMenus([{ button: $('btn-ink'), menu: $('ink-menu') }, { button: $('btn-more'), menu: $('more-menu'), closeOnChoice: true }, { button: $('btn-boards'), menu: $('boards-menu'), closeOnChoice: true }]);      // Boards opens from a row in More, or from the name tag
 board.flip = new BoardFlip({ board });                           // the pull-back, showcase and fly-forward when switching boards
-const boardsUI = new Boards({ board, button: $('btn-boards'), menu: $('boards-menu'), pill: $('board-name'), speak: (t) => voice.speak(t),
+const boardsUI = new Boards({ board, button: $('btn-boards'), menu: $('boards-menu'), pill: $('board-name'), bar: $('board-bar'), prev: $('board-prev'), next: $('board-next'), speak: (t) => voice.speak(t),
   show: (t) => showBubble(`<p><b>${plain(t)}</b></p>`, 2500) });
 window.jarvis.boards = boardsUI;
 watchDockSize($('toolbar'));

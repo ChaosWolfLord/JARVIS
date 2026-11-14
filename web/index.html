@@ -198,7 +198,11 @@
       </div>
     </aside>
     <main id="stage">
-      <button type="button" id="board-name" hidden title="Which whiteboard this is. Tap to switch."></button>
+      <div id="board-bar" hidden role="group" aria-label="Whiteboard">
+        <button type="button" id="board-prev" title="Previous whiteboard ([)" aria-label="Previous whiteboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button type="button" id="board-name" title="Which whiteboard this is. Tap to see them all."></button>
+        <button type="button" id="board-next" title="Next whiteboard (])" aria-label="Next whiteboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
       <div id="sidelight" aria-hidden="true"><i class="l"></i><i class="r"></i></div>
       <div id="board">
         <canvas id="ink"></canvas>
