@@ -1,5 +1,6 @@
 // The Music widget and spoken music commands. Songs come from YouTube Music and play on your Google Home / Nest speakers
-// (over Cast). "Jarvis, play bohemian rhapsody", "pause", "next song", "volume down" are handled on the PC without asking
+// (over Cast); when no speaker can be reached they play on this PC, in a small YouTube Music window, unless that is switched off in the card.
+// "Jarvis, play bohemian rhapsody", "pause", "next song", "volume down" are handled on the PC without asking
 // the AI, so they are instant and use none of the free request allowance.
 
 const MUSIC_TALK = /^(?:please |can you |could you |hey )?(?:jarvis[ ,]*)?(?:play\b|pause\b|resume\b|unpause\b|continue\b|skip\b|next\b|previous\b|go back\b|louder\b|quieter\b|softer\b|volume\b|turn (?:it|the music|the volume) (?:up|down|off)|stop (?:the )?(?:music|song|playing|playback)|music off|what(?:'s| is) (?:currently |now )?playing|what song is (?:this|that|playing))/i;
@@ -9,6 +10,8 @@ export class Music {
     this.root = root;
     this.now = root.querySelector('#music-now');
     this.foot = root.querySelector('#music-foot');
+    this.fallback = root.querySelector('#music-fallback');
+    this.fallback?.addEventListener('change', () => this.call('/api/music/prefs', { fallback: this.fallback.checked }).then((d) => this.render(d)).catch((e) => this.toast(e.message)));
     this.speak = speak;
     this.toast = toast;
     root.querySelector('#music-form').addEventListener('submit', (e) => {
@@ -38,7 +41,8 @@ export class Music {
   render(d) {
     const n = d.now || {};
     this.now.textContent = n.title ? `♪ ${n.title}${n.artist ? ` · ${n.artist}` : ''} (${n.device})` : 'Nothing playing yet.';
-    this.foot.textContent = d.error || (d.devices?.length ? `Speakers: ${d.devices.map((x) => x.name).join(', ')}` : '');
+    this.foot.textContent = d.error && d.fallback ? 'No speaker could be reached, so songs play on this PC.' : d.error || (d.devices?.length ? `Speakers: ${d.devices.map((x) => x.name).join(', ')}` : '');
+    if (this.fallback && typeof d.fallback === 'boolean') this.fallback.checked = d.fallback;
   }
 
   async send(command) {

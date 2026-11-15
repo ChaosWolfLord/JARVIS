@@ -452,6 +452,18 @@ def command_music(req: MusicCommand):
     return {"ok": not text.startswith("Error"), "text": text.removeprefix("Error: "), **music_mod.instance.view()}
 
 
+class MusicPrefs(BaseModel):
+    fallback: bool
+
+
+@app.post("/api/music/prefs")
+def music_prefs(req: MusicPrefs):
+    """"If a speaker can't be reached, play on this PC": on or off."""
+    music_mod.set_fallback(req.fallback)
+    audit.record("music", "play on this PC when a speaker can't be reached: " + ("on" if req.fallback else "off"))
+    return music_mod.instance.view()
+
+
 @app.post("/api/music/voice")
 def voice_music(req: SpokenLight):
     """A spoken music command ("play ...", "pause", "volume down"). Handled here, with no AI request."""

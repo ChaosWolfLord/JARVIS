@@ -9,7 +9,11 @@ Two small add-ons do the work and are installed once (JARVIS asks first): `pychr
 Wi-Fi, and `ytmusicapi` searches YouTube Music (an unofficial but widely used library; it needs no login for searching).
 Both are imported only when music is used, so JARVIS runs fine without them.
 
-Settings in .env (optional): MUSIC_DEVICE=Kitchen speaker (the speaker used when none is named), JARVIS_MUSIC=0 turns it off.
+If a speaker can't be connected to (none found, it isn't answering, or the Cast add-on isn't installed), the song is played on this PC instead, in a
+small YouTube Music window (see localplayer.py). That can be switched off.
+
+Settings in .env (optional): MUSIC_DEVICE=Kitchen speaker (the speaker used when none is named), JARVIS_MUSIC=0 turns it off,
+MUSIC_FALLBACK=0 never plays on this PC when a speaker can't be reached (the same switch is in the Music card).
 """
 from __future__ import annotations
 
@@ -20,7 +24,7 @@ import re
 import threading
 import time
 
-from . import persona
+from . import localplayer, persona, store
 
 log = logging.getLogger("jarvis")
 
@@ -29,8 +33,29 @@ INSTALL_HINT = ("Music needs two small add-ons that aren't installed yet. Run:  
 REFRESH_EVERY = 6 * 3600.0       # the finder keeps running and notices speakers by itself; a missing name forces a new look
 
 
+PREFS = store.STATE / "music.json"
+
+
 class MusicError(Exception):
     """Something the user can act on; the message says what."""
+
+
+class SpeakerUnreachable(MusicError):
+    """The speaker could not be connected to (none found, off, on another network): the one kind of failure that plays the song on this PC instead."""
+
+
+def fallback_enabled() -> bool:
+    """Play on this PC when no speaker can be reached? On unless MUSIC_FALLBACK=0 or it was switched off in the Music card."""
+    if os.getenv("MUSIC_FALLBACK", "1").strip() == "0":
+        return False
+    return bool(store._read(PREFS, {}).get("fallback", True))
+
+
+def set_fallback(on: bool) -> bool:
+    prefs = store._read(PREFS, {})
+    prefs["fallback"] = bool(on)
+    store._write(PREFS, prefs)
+    return bool(on)
 
 
 def _local_ip() -> str:
@@ -53,7 +78,7 @@ def _speaker_call(fn):
         except MusicError:
             raise
         except Exception as e:  # noqa: BLE001
-            raise MusicError(f"the speaker didn't respond ({e.__class__.__name__}).") from None
+            raise SpeakerUnreachable(f"the speaker didn't respond ({e.__class__.__name__}).") from None
     return inner
 
 
@@ -76,7 +101,8 @@ class CastBackend:
         try:
             return __import__(name, fromlist=["x"])
         except ImportError:
-            raise MusicError(INSTALL_HINT) from None
+            # Without the Cast add-on no speaker can be reached (the song can still play on this PC); without the search add-on nothing can be found.
+            raise (SpeakerUnreachable if name == "pychromecast" else MusicError)(INSTALL_HINT) from None
 
     def refresh(self, force: bool = False) -> None:
         with self.lock:
@@ -91,7 +117,7 @@ class CastBackend:
             try:
                 casts, browser = pc.get_chromecasts(timeout=6)
             except Exception as e:  # noqa: BLE001
-                raise MusicError(f"couldn't look for speakers on the network ({e.__class__.__name__}).") from None
+                raise SpeakerUnreachable(f"couldn't look for speakers on the network ({e.__class__.__name__}).") from None
             self.browser, self.found_at, self.network = browser, time.time(), _local_ip()
             self.casts = {c.cast_info.friendly_name.strip(): c for c in casts}
             self.handlers = {}
@@ -112,13 +138,13 @@ class CastBackend:
                 self.refresh(force=True)
                 cast = self.casts.get(name)
             if not cast:
-                raise MusicError(f"I can't find a speaker called {name}. Is it on and on the same Wi-Fi?")
+                raise SpeakerUnreachable(f"I can't find a speaker called {name}. Is it on and on the same Wi-Fi?")
             try:
                 cast.wait(timeout=8)
                 return cast
             except Exception:  # noqa: BLE001 - a timeout or a closed connection: look for the speaker again
                 if attempt == 2:
-                    raise MusicError(f"{name} isn't answering. Is it on, and on the same Wi-Fi as this PC?") from None
+                    raise SpeakerUnreachable(f"{name} isn't answering. Is it on, and on the same Wi-Fi as this PC?") from None
                 self.refresh(force=True)
 
     def search(self, query: str) -> dict:
@@ -156,7 +182,7 @@ class CastBackend:
                 return
             except Exception as e:  # noqa: BLE001
                 if attempt == 2:
-                    raise MusicError(f"the speaker didn't accept that ({e.__class__.__name__}).") from None
+                    raise SpeakerUnreachable(f"the speaker didn't accept that ({e.__class__.__name__}).") from None
                 self.refresh(force=True)                  # a stale connection: connect again and try once more
 
     @_speaker_call
@@ -194,8 +220,11 @@ class CastBackend:
 # ---- what the user asked for -------------------------------------------------------------------------
 
 class Music:
-    def __init__(self, backend=None) -> None:
+    def __init__(self, backend=None, local=None, fallback=fallback_enabled) -> None:
         self.backend = backend or CastBackend()
+        self.local = local                   # a localplayer.LocalPlayer (None: never play on this PC)
+        self._fallback = fallback
+        self.where = ""                      # "speaker" or "here": where the song that is playing went
         self.last_device = ""
         self.now: dict = {}
 
@@ -206,7 +235,7 @@ class Music:
         """The speaker a command is for: the one named, else MUSIC_DEVICE, else the last one used, else the only one there is."""
         known = [d["name"] for d in self.devices()]
         if not known:
-            raise MusicError("I don't see any speakers on the network. Check that they're on and on the same Wi-Fi as this PC.")
+            raise SpeakerUnreachable("I don't see any speakers on the network. Check that they're on and on the same Wi-Fi as this PC.")
         want = re.sub(r"\b(the|my|speakers?|display|nest|google|home|mini|in|on)\b", " ", (device or "").lower()).strip()
         want = re.sub(r"\s+", " ", want)
         if want:
@@ -227,25 +256,71 @@ class Music:
             return known[0]
         raise MusicError(f"Which speaker? Your speakers: {', '.join(known)}.")
 
+    def _can_play_here(self) -> bool:
+        return self.local is not None and self._fallback() and self.local.available()
+
     def play(self, query: str, device: str = "") -> str:
         query = re.sub(r"\s+", " ", str(query or "")).strip()
         if not query:
             raise MusicError("what should I play?")
-        name = self.choose(device)
+        name, trouble = None, None
+        try:
+            name = self.choose(device)
+        except SpeakerUnreachable as e:                        # "which speaker?" and "I don't know that speaker" still stop here
+            trouble = e
+            if not self._can_play_here():
+                raise
         song = self.backend.search(query)
-        self.backend.play(name, song["video_id"], song.get("playlist_id"))
-        self.last_device = name
-        self.now = {"title": song["title"], "artist": song["artist"], "device": name}
+        if name is not None:
+            try:
+                self.backend.play(name, song["video_id"], song.get("playlist_id"))
+                self.where = "speaker"
+                self.last_device = name
+                self.now = {"title": song["title"], "artist": song["artist"], "device": name}
+                by = f" by {song['artist']}" if song["artist"] else ""
+                return f"Playing {song['title']}{by} on {name}."
+            except SpeakerUnreachable as e:
+                trouble = e
+                if not self._can_play_here():
+                    raise
+        return self._play_here(song, trouble, (device or "").strip() or name)
+
+    def _play_here(self, song: dict, trouble: MusicError | None, wanted: str | None) -> str:
+        """The speaker could not be reached: the song plays on this PC, and the answer says so."""
+        try:
+            self.local.play(song["video_id"], song.get("playlist_id"))
+        except localplayer.LocalPlayerError as e:
+            raise MusicError(f"{trouble} I couldn't play it on this PC either: {e}") from None
+        self.where = "here"
+        self.now = {"title": song["title"], "artist": song["artist"], "device": "this PC", "fallback": True}
         by = f" by {song['artist']}" if song["artist"] else ""
-        return f"Playing {song['title']}{by} on {name}."
+        who = f"the {wanted}" if wanted and not str(wanted).lower().startswith("the ") else (wanted or "the speaker")
+        return f"I couldn't reach {who}, so I'm playing {song['title']}{by} on this PC."
+
+    def _here(self, device: str) -> bool:
+        """Is this command about the song playing on this PC? Yes, unless a speaker was named."""
+        return self.where == "here" and self.local is not None and not (device or "").strip()
+
+    def _on_pc(self, action):
+        try:
+            return action()
+        except localplayer.LocalPlayerError as e:
+            raise MusicError(str(e)) from None
 
     def control(self, what: str, device: str = "") -> str:
+        if self._here(device):
+            said = self._on_pc(lambda: self.local.control(what))
+            if what == "stop":
+                self.where = ""
+            return said
         name = self.choose(device)
         self.backend.control(name, what)
         self.last_device = name
         return {"pause": "Paused.", "resume": "Playing.", "stop": "Stopped.", "next": "Next song.", "previous": "Previous song."}[what]
 
     def volume(self, level: int | None = None, direction: str = "", device: str = "") -> str:
+        if self._here(device):
+            return self._on_pc(lambda: self.local.volume(level, direction))
         name = self.choose(device)
         if level is not None:
             new = self.backend.volume(name, level=max(0, min(100, int(level))) / 100)
@@ -255,6 +330,10 @@ class Music:
         return f"Volume {round(new * 100)} percent."
 
     def status(self, device: str = "") -> str:
+        if self._here(device):
+            n = self.now
+            by = f" by {n['artist']}" if n.get("artist") else ""
+            return f"{'Paused on' if self.local.paused else 'Playing'} {n.get('title', 'a song')}{by} on this PC."
         name = self.choose(device)
         n = self.backend.now_playing(name)
         if not n.get("title") or n.get("state") in (None, "IDLE", "UNKNOWN"):
@@ -264,9 +343,9 @@ class Music:
 
     def view(self) -> dict:
         try:
-            return {"devices": self.devices(), "now": self.now, "last": self.last_device, "error": ""}
+            return {"devices": self.devices(), "now": self.now, "last": self.last_device, "error": "", "fallback": self._fallback()}
         except MusicError as e:
-            return {"devices": [], "now": self.now, "last": self.last_device, "error": str(e)}
+            return {"devices": [], "now": self.now, "last": self.last_device, "error": str(e), "fallback": self._fallback()}
 
 
 # ---- spoken commands ------------------------------------------------------------------------------------
@@ -324,11 +403,12 @@ def handle_voice(text: str, music: Music | None = None) -> dict:
     try:
         a = cmd["action"]
         if a == "play":
-            m.play(cmd["query"], cmd.get("device", ""))
-            say = persona.music_reply(cmd, m.now)
+            said = m.play(cmd["query"], cmd.get("device", ""))
+            say = said if m.now.get("fallback") else persona.music_reply(cmd, m.now)         # on this PC the answer says why, in plain words
         elif a == "volume":
             result = m.volume(cmd.get("level"), cmd.get("direction", ""))
-            say = persona.music_reply(cmd, level_after=int(re.search(r"\d+", result).group()))
+            digits = re.search(r"\d+", result)
+            say = persona.music_reply(cmd, level_after=int(digits.group()) if digits else None)
         elif a == "status":
             say = m.status()
         else:
@@ -365,4 +445,4 @@ def available() -> bool:
     return os.getenv("JARVIS_MUSIC", "1") != "0"
 
 
-instance = Music()
+instance = Music(local=localplayer.LocalPlayer())

@@ -198,3 +198,8 @@ body.touch #toolbar #boards-menu .boards-actions button, body.touch #boards-menu
 #boards-menu .boards-anim { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; font-size: 13.5px; color: var(--dim); cursor: pointer; }
 #boards-menu .boards-anim input { width: 18px; height: 18px; accent-color: var(--cyan); }
 body.touch #boards-menu .boards-anim { font-size: 17px; }
+
+/* the Music card: "If a speaker can't be reached, play on this PC" */
+#music .mu-fallback { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: 13px; color: var(--dim); cursor: pointer; }
+#music .mu-fallback input { width: 16px; height: 16px; accent-color: var(--cyan); }
+body.touch #music .mu-fallback { font-size: 16px; }
