@@ -262,6 +262,23 @@
           <ul id="files-list"></ul>
           <footer id="files-foot" class="sys-foot"></footer>
         </section>
+        <section id="camera" class="widget" hidden aria-label="Camera">
+          <header>
+            <b>CAMERA</b>
+            <button type="button" class="w-close" data-close="camera" title="Close the camera">×</button>
+          </header>
+          <div id="camera-frame">
+            <video id="camera-video" autoplay muted playsinline hidden></video>
+            <img id="camera-phone" alt="Live picture from your phone's camera" hidden>
+            <p id="camera-empty" role="status"></p>
+          </div>
+          <div class="mu-buttons">
+            <button type="button" data-cam="pc" title="Show this PC's camera">This PC</button>
+            <button type="button" data-cam="phone" title="Show your phone's camera (tap Show my camera on the wall in the app)">Phone</button>
+            <button type="button" data-cam="stop" title="Stop and close">Stop</button>
+          </div>
+          <footer id="camera-foot" class="sys-foot"></footer>
+        </section>
         <section id="picture" class="widget" hidden aria-label="Picture">
           <header>
             <b id="picture-title">PICTURE</b>

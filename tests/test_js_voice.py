@@ -87,6 +87,11 @@ class RoutinesAndFiles(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertIn("ok   ", run.stdout)
 
+    def test_the_live_camera_card_and_its_voice_commands(self):
+        run = subprocess.run(["node", "tests/js/camera.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("ok   ", run.stdout)
+
     def test_the_board_switch_animation_poses(self):
         run = subprocess.run(["node", "tests/js/boardflip.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60, encoding="utf-8")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

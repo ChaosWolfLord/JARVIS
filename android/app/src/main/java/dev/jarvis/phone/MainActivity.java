@@ -72,6 +72,9 @@ public class MainActivity extends Activity {
 
     static final int NOTIFY_REQUEST = 8;
     static final int LOOK_REQUEST = 9;
+    static final int CAMERA_REQUEST = 10;                    // the page's live camera ("Show my camera on the wall")
+    static final int LOOK_PERMISSION_REQUEST = 11;           // the Look button, which needs the camera permission to be answered first
+    private PermissionRequest pendingWebCamera = null;
     private volatile boolean chatInProgress = false;        // set by the standalone page while it is talking, so reopening the app does not interrupt it
 
     /** An alert or a ringing reminder, for the page to show too when the app is open. */
@@ -147,7 +150,19 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(PermissionRequest request) {
-                request.deny();                         // the page never gets the microphone itself: speech goes through the bridge
+                // The page never gets the microphone itself (speech goes through the bridge). It may ask for the camera, and only the camera, and only our own page.
+                runOnUiThread(() -> {
+                    String[] wanted = request.getResources();
+                    boolean onlyVideo = wanted.length == 1 && PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(wanted[0]);
+                    if (!onlyVideo || !trustedPage || !ours(String.valueOf(request.getOrigin()))) { request.deny(); return; }
+                    if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                        return;
+                    }
+                    if (pendingWebCamera != null) pendingWebCamera.deny();
+                    pendingWebCamera = request;
+                    requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_REQUEST);
+                });
             }
         });
     }
@@ -448,6 +463,10 @@ public class MainActivity extends Activity {
 
     /** The "Look" button: the phone's camera app takes one picture, which comes back here to be shrunk and shown to the page (see Share.fromCamera). */
     private void startCamera() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, LOOK_PERMISSION_REQUEST);          // with the permission listed, the camera app won't open until it is answered
+            return;
+        }
         try {
             ContentValues v = new ContentValues();
             v.put(MediaStore.Images.Media.DISPLAY_NAME, "jarvis-look.jpg");
@@ -484,6 +503,18 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
         if (code == NOTIFY_REQUEST) return;               // the system remembers the answer; the page asks again with allowed()
+        boolean granted = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
+        if (code == CAMERA_REQUEST) {
+            PermissionRequest asked = pendingWebCamera;
+            pendingWebCamera = null;
+            if (asked != null) { if (granted) asked.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE}); else asked.deny(); }
+            return;
+        }
+        if (code == LOOK_PERMISSION_REQUEST) {
+            if (granted) startCamera();
+            else Toast.makeText(this, "Allow the camera for JARVIS in the phone's settings to use this.", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (code != MIC_REQUEST) return;
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED && pendingLanguage != null) startRecognizer(pendingLanguage);
         else { emit("error", "not-allowed"); emit("end", ""); }

@@ -27,6 +27,7 @@ import { Vision } from './vision.js';
 import { Nudges } from './nudges.js';
 import { Boards } from './boards.js';
 import { CodeFolder } from './codefolder.js';
+import { LiveCamera } from './camera.js';
 import { BoardFlip } from './boardflip.js';
 import { News } from './news.js';
 import { ShowOff } from './showoff.js';
@@ -290,6 +291,9 @@ chat.onFiles = (ev) => {
 const finderFolders = new FinderFolders({ root: $('status-menu') });
 const routinesUI = new Routines({ root: $("status-menu"), speak: (t) => voice.speak(t) });
 const codeUI = new CodeFolder({ root: $("status-menu") });
+const cameraUI = new LiveCamera({ el: $('camera'), open: () => widgets.set('camera', true, false), close: () => widgets.set('camera', false, false), speak: (t) => voice.speak(t) });
+widgets.register({ id: 'camera', title: 'Camera', icon: '📷', blurb: 'A live view from this PC’s webcam or your phone’s camera. Say “show the webcam”.',
+  el: $('camera'), onHide: () => { if (cameraUI.source) cameraUI.stop(); } });
 const nudgesUI = new Nudges({ root: $("status-menu"), busy: () => chat.busy || voice.speaking, speak: (t) => voice.speak(t), show: (t) => showBubble(`<p><b>JARVIS</b></p><p>${plain(t)}</p>`, Math.min(40_000, 10_000 + t.length * 45)) });
 const visionUI = new Vision({ root: $("status-menu"), speak: (t) => voice.speak(t), show: (t) => showBubble(`<p>${plain(t)}</p>`, Math.min(40_000, 6000 + t.length * 45)) });
 routinesUI.refresh();
@@ -394,6 +398,7 @@ pen.onNotify = (m) => {
   showBubble(`<p><b>${plain(m.title)}</b></p><p>${plain(m.text)}</p>`, 15_000);
   if (m.speak) voice.speak(m.speak);
 };
+pen.onCamera = (m) => cameraUI.onEvent(m);                       // the phone started or stopped showing its camera
 pen.onBoards = () => board.sync();                              // a board was added, switched or deleted (from the phone, or another screen)
 pen.onPrivacy = () => privacy.refresh();                       // the phone locked or unlocked the screen
 pen.onNudge = (m) => { ambient.poke(); sounds.play('ok'); nudgesUI.deliver(m); };      // JARVIS speaks first
@@ -442,12 +447,12 @@ window.jarvis.status = status;
 const privacy = new Privacy({
   overlay: $('privacy'),
   toast,
-  onLocked: () => { voice.pauseForPrivacy(); showoff.stop(); voice.cancelSpeech?.(); setPanel(false, false); hideBubble(true); status.toggle(false); widgets.toggleMenu(false); },
+  onLocked: () => { cameraUI.stop(); voice.pauseForPrivacy(); showoff.stop(); voice.cancelSpeech?.(); setPanel(false, false); hideBubble(true); status.toggle(false); widgets.toggleMenu(false); },
   onUnlocked: () => { board.sync(); status.poll(); voice.resumeIfPaused(); },
   onState: (s) => { $('privacy-phone-only').checked = Boolean(s.phone_only); },
 });
 window.jarvis.privacy = privacy;
-voice.special = (command) => privacy.handleVoice(command) || boardsUI.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || routinesUI.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || filesUI.handleVoice(command) || nudgesUI.handleVoice(command) || visionUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
+voice.special = (command) => privacy.handleVoice(command) || boardsUI.handleVoice(command) || cameraUI.handleVoice(command) || showoff.handleVoice(command) || system.handleVoice(command) || routinesUI.handleVoice(command) || lightsUI.handleVoice(command) || musicUI.handleVoice(command) || filesUI.handleVoice(command) || nudgesUI.handleVoice(command) || visionUI.handleVoice(command) || pictureUI.handleVoice(command) || phoneLink.handleVoice(command, (t) => voice.speak(t)) || appsUI.handleVoice(command);
 chat.onTyped = (text) => voice.special(text);       // typing "show off", "lights off"... in the chat box works like saying it
 $('privacy-lock').addEventListener('click', () => privacy.lock());
 $('privacy-phone-only').addEventListener('change', async (e) => {

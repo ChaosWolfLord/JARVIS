@@ -23,7 +23,7 @@ def bridge_methods() -> set[str]:
 class Permissions(unittest.TestCase):
     def test_only_the_permissions_the_features_need(self):
         asked = sorted(re.findall(r'uses-permission android:name="android\.permission\.(\w+)"', MANIFEST))
-        self.assertEqual(asked, sorted(["INTERNET", "RECORD_AUDIO", "POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "USE_EXACT_ALARM", "SCHEDULE_EXACT_ALARM",
+        self.assertEqual(asked, sorted(["INTERNET", "RECORD_AUDIO", "CAMERA", "POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "USE_EXACT_ALARM", "SCHEDULE_EXACT_ALARM",
                                         "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC", "USE_FULL_SCREEN_INTENT", "VIBRATE",
                                         "FOREGROUND_SERVICE_MEDIA_PLAYBACK", "SYSTEM_ALERT_WINDOW", "MODIFY_AUDIO_SETTINGS"]))
 
@@ -186,10 +186,26 @@ class ShareAndSavings(unittest.TestCase):
         self.assertIn("takePhoto", PHONE_JS)
         manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
         self.assertIn("android.media.action.IMAGE_CAPTURE", manifest)
-        self.assertNotIn("android.permission.CAMERA", manifest)           # the camera app takes the picture; JARVIS never holds the camera
+        self.assertIn("android.permission.CAMERA", manifest)              # needed for the live camera; see the next test for how it is used
+        self.assertIn('android.hardware.camera" android:required="false"', manifest)       # phones without a camera can still install it
         share = self.src["Share.java"]
         self.assertIn("static void fromCamera", share)
         self.assertIn("getContentResolver().delete(uri", share)             # the gallery copy is deleted straight away
+
+    def test_the_page_may_use_the_camera_only_when_it_is_ours_and_never_the_microphone(self):
+        main = self.src["MainActivity.java"]
+        part = main[main.index("public void onPermissionRequest"):main.index("private void say(")]
+        self.assertIn("wanted.length == 1 && PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(wanted[0])", part)       # the camera and nothing else with it
+        self.assertIn("!trustedPage || !ours(String.valueOf(request.getOrigin()))", part)                            # and only our own page, from its own address
+        self.assertIn("request.deny()", part)
+        self.assertNotIn("RESOURCE_AUDIO_CAPTURE", main)                                                            # the microphone is never handed to a page
+        self.assertEqual(part.count("request.grant("), 1)
+        self.assertIn("CAMERA_REQUEST", main[main.index("public void onRequestPermissionsResult"):])               # the system's question is asked, and the answer honoured
+        look = main[main.index("private void startCamera()"):main.index("private void startCamera()") + 400]
+        self.assertIn("checkSelfPermission(Manifest.permission.CAMERA)", look)                                       # the Look button answers the permission first
+        js = PHONE_JS
+        self.assertIn("'/camera/frame'", js)
+        self.assertIn("audio: false", js)                                                                           # the live camera never asks for sound
 
     def test_checking_for_updates_costs_no_data_when_nothing_changed(self):
         updates = self.src["Updates.java"]

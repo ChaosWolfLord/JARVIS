@@ -112,6 +112,7 @@ function lockRender() {
 }
 
 function showLock(state) {
+  stopLive('', false);                                          // the privacy screen is on: the camera goes off at once
   const was = !$('lock').hidden;
   lockHasCode = state.has_code !== false;
   $('lock').hidden = false;
@@ -179,6 +180,97 @@ for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', 'OK'])
   });
   $('lock-keys').append(b);
 }
+// ---- the phone's camera, live on the wall -------------------------------------------------------------------------------
+// You start it here, each time, and a bar shows while it is on. The PC keeps only the newest picture in memory (nothing is recorded or sent to an AI) and can
+// stop it; the privacy screen stops it; leaving the app stops it. Pictures are small JPEGs, about nine a second, to this PC only.
+const LIVE_WIDTH = 640;
+const LIVE_GAP_MS = 110;
+const LIVE_MAX_MS = 30 * 60 * 1000;
+let live = null;
+
+function liveNote(text) { $('live-note').textContent = text || ''; }
+
+async function openLiveStream(facing) {
+  return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+}
+
+async function startLive(facing = 'environment') {
+  if (live || LOCAL || !token) return;
+  if (!navigator.mediaDevices?.getUserMedia) { liveNote('This phone can’t open the camera from here.'); return; }
+  let stream;
+  try {
+    stream = await openLiveStream(facing);
+  } catch (e) {
+    liveNote(e?.name === 'NotAllowedError' ? 'The camera is blocked. Allow the camera for JARVIS in the phone’s settings, then try again.' : 'Couldn’t open the camera.');
+    return;
+  }
+  const video = $('live-video');
+  video.srcObject = stream;
+  video.play().catch(() => {});                                 // not waited for: it only finishes once the first picture arrives, and the loop below waits for that itself
+  live = { stream, facing, started: Date.now(), timer: 0, canvas: document.createElement('canvas') };
+  $('live-bar').hidden = false;
+  $('menu').hidden = true;
+  liveNote('');
+  pumpLive();
+}
+
+async function pumpLive() {
+  const l = live;
+  if (!l) return;
+  const t0 = performance.now();
+  try {
+    const v = $('live-video');
+    if (v.videoWidth) {
+      const w = Math.min(LIVE_WIDTH, v.videoWidth);
+      l.canvas.width = w;
+      l.canvas.height = Math.round((v.videoHeight * w) / v.videoWidth);
+      l.canvas.getContext('2d').drawImage(v, 0, 0, l.canvas.width, l.canvas.height);
+      const blob = await new Promise((resolve) => l.canvas.toBlob(resolve, 'image/jpeg', 0.6));
+      if (live !== l) return;
+      const res = await fetch('/camera/frame', { method: 'POST', headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${token}` }, body: blob });
+      if (res.status === 423) { stopLive('The camera stopped: the privacy screen is on.', false); return; }
+      if (res.status === 410) { stopLive('The camera was stopped on the PC.', false); return; }
+      if (res.status === 401) { stopLive('', false); return; }
+    }
+  } catch { /* one missed picture: carry on */ }
+  if (live !== l) return;
+  if (Date.now() - l.started > LIVE_MAX_MS) { stopLive('The camera stopped after 30 minutes.'); return; }
+  l.timer = setTimeout(pumpLive, Math.max(30, LIVE_GAP_MS - (performance.now() - t0)));
+}
+
+/** Shuts the camera. `tell`: also tell the PC (so the wall's card knows). */
+function stopLive(message, tell = true) {
+  const l = live;
+  if (!l) return;
+  live = null;
+  clearTimeout(l.timer);
+  l.stream.getTracks().forEach((t) => t.stop());
+  $('live-video').srcObject = null;
+  $('live-bar').hidden = true;
+  if (tell && token) fetch('/camera/stop', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, keepalive: true }).catch(() => {});
+  if (message) add('note', message);
+}
+
+async function flipLive() {
+  const l = live;
+  if (!l) return;
+  const next = l.facing === 'environment' ? 'user' : 'environment';
+  try {
+    const stream = await openLiveStream(next);
+    l.stream.getTracks().forEach((t) => t.stop());
+    l.stream = stream;
+    l.facing = next;
+    $('live-video').srcObject = stream;
+    $('live-video').play().catch(() => {});
+  } catch { add('note', 'Couldn’t switch cameras.'); }
+}
+
+$('live-start').addEventListener('click', () => startLive());
+$('live-stop').addEventListener('click', () => stopLive('The camera is no longer on the wall.'));
+$('live-flip').addEventListener('click', flipLive);
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopLive('The camera stopped because the app was closed.'); });      // never left on in a pocket
+window.addEventListener('pagehide', () => stopLive('', true));
+
 $('lock-now').addEventListener('click', async () => {
   $('menu').hidden = true;
   try {
@@ -790,6 +882,8 @@ function watchForPc() {
 
 function startLocal() {
   show('chat');
+  $('live-start').hidden = true;                                // nothing on the PC to show it on
+  $('live-note').hidden = true;
   setState('Standalone: your PC isn’t reachable', 'bad');
   $('set-pc').hidden = true;                                 // nothing on the PC to show things on
   $('forget').hidden = true;

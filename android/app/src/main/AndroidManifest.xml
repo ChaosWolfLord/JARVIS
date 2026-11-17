@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- "Show my camera on the wall": the app's page may use the camera only when you tap that button (the phone asks you the first time); never the microphone -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
@@ -24,7 +28,7 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
-        <!-- the phone's own camera app, used for the "Look" button (no camera permission: the camera app takes the picture) -->
+        <!-- the phone's own camera app, used for the "Look" button (the camera app takes the picture) -->
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>

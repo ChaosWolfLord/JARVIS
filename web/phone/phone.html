@@ -46,6 +46,8 @@
         <label class="row"><span><b>Say answers on the PC speakers</b><small>The PC reads each answer out loud.</small></span><input type="checkbox" class="switch" id="opt-speak"></label>
         <label class="row" id="board-row" hidden><span><b>Whiteboard on the wall</b><small id="board-note">Choose which whiteboard the wall shows.</small></span><select id="opt-board" aria-label="Whiteboard on the wall"></select></label>
         <button id="open-remote" type="button" class="action">Remote: touchpad, slides, music…</button>
+        <button id="live-start" type="button" class="action">Show my camera on the wall</button>
+        <p id="live-note" class="note" role="status"></p>
         <button id="lock-now" type="button" class="action">Lock JARVIS (privacy screen)</button>
       </section>
 
@@ -128,6 +130,12 @@
       <button type="submit" id="send">Send</button>
     </form>
     <p id="hint" hidden></p>
+    <div id="live-bar" role="status" hidden>
+      <video id="live-video" muted playsinline aria-hidden="true"></video>
+      <span><b>Your camera is on the wall</b><small>Nothing is recorded.</small></span>
+      <button type="button" id="live-flip" aria-label="Switch between the front and back camera">Flip</button>
+      <button type="button" id="live-stop" class="danger">Stop</button>
+    </div>
     <div id="lock" role="dialog" aria-modal="true" aria-labelledby="lock-title" hidden>
       <div class="lockbox">
         <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>

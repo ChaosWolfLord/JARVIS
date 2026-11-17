@@ -10,13 +10,13 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from . import agent, audit, browser as browser_mod, claude_usage, codefolder as codefolder_mod, diagnostics, filefinder as filefinder_mod, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, nudges as nudges_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, routines as routines_mod, runner, store, vision as vision_mod, wakeword
+from . import agent, audit, browser as browser_mod, claude_usage, codefolder as codefolder_mod, livecam, diagnostics, filefinder as filefinder_mod, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, nudges as nudges_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, routines as routines_mod, runner, store, vision as vision_mod, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -61,6 +61,7 @@ async def lifespan(_app):
             routines=_Routines(),
             privacy_door=_PrivacyDoor(),
             boards=_Boards(),
+            camera=_Camera(),
             on_events_connect=lambda: courier.deliver_due(),      # a phone just opened its page: hand over reminders that were waiting for it
             port=int(os.getenv("JARVIS_PHONE_PORT", "8443")),
             tls=os.getenv("JARVIS_PHONE_TLS", "1") != "0",
@@ -165,6 +166,33 @@ def _phone_ready() -> bool:
 
 
 privacy.phone_ready = _phone_ready
+
+
+class _Camera:
+    """What the phone door may do with the live camera: hand over frames (and stop). It can never switch a camera on; only the phone does that."""
+
+    @staticmethod
+    def _who(token: str) -> str:
+        import hashlib
+        return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+    async def read(self, request) -> bytes:
+        try:
+            return await vision_mod.read_body(request, livecam.MAX_FRAME)
+        except vision_mod.VisionError:
+            raise ValueError("that picture is too big.") from None
+
+    def frame(self, token: str, data: bytes) -> dict:
+        out = livecam.feed.put(self._who(token), data)
+        if out.get("started"):
+            audit.record("camera", "the phone is showing its camera on the wall")
+            tell_pages({"type": "camera", "state": "on", "source": "phone"})
+        return out
+
+    def release(self, token: str) -> None:
+        if livecam.feed.release(self._who(token)):
+            audit.record("camera", "the phone stopped showing its camera")
+            tell_pages({"type": "camera", "state": "off", "source": "phone"})
 
 
 class _Boards:
@@ -450,6 +478,40 @@ def command_music(req: MusicCommand):
     text = music_mod.tool(args)
     audit.record("music", detail, "error" if text.startswith("Error") else "ok")
     return {"ok": not text.startswith("Error"), "text": text.removeprefix("Error: "), **music_mod.instance.view()}
+
+
+livecam.feed.locked = privacy.locked                    # the privacy screen ends any live feed and clears the picture
+
+
+@app.get("/api/camera")
+def camera_status():
+    return livecam.feed.status()
+
+
+@app.get("/api/camera/frame")
+async def camera_frame(after: int = Query(0, ge=0), wait: float = Query(2.0, ge=0, le=10)):
+    """The newest frame of the phone's live camera, as a JPEG, once it is newer than `after` (waits up to `wait` seconds for one). 204 when there is none."""
+    seq, frame, live = await run_in_threadpool(livecam.feed.wait_newer, after, wait)
+    headers = {"X-Seq": str(seq), "X-Live": "1" if live else "0", "Cache-Control": "no-store"}
+    if not frame:
+        return Response(status_code=204, headers=headers)
+    return Response(content=frame, media_type="image/jpeg", headers=headers)
+
+
+@app.post("/api/camera/stop")
+def camera_stop():
+    """The wall stops the phone's live camera (the phone shuts it on its next frame)."""
+    if livecam.feed.stop():
+        audit.record("camera", "stopped from the wall")
+        tell_pages({"type": "camera", "state": "off", "source": "phone"})
+    return {"ok": True}
+
+
+@app.post("/api/camera/ask")
+def camera_ask_phone():
+    """"Show the phone camera": the PC cannot turn a phone's camera on, so it sends the phone a notification to tap."""
+    sent = phone_service.publish({"type": "push", "title": "JARVIS", "text": "Tap to show your camera on the wall."})
+    return {"sent": sent}
 
 
 class CodeSettings(BaseModel):
