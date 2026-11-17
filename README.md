@@ -248,6 +248,16 @@ The window has its own browser profile (`%LOCALAPPDATA%\jarvis\browser-music`), 
 
 Then restart JARVIS. If you have more than one speaker, say which ("on the bedroom speaker") or set `MUSIC_DEVICE=Kitchen` in `.env` for the usual one; otherwise JARVIS uses the speaker you used last, or the only one it finds.
 
+## Code folder (JARVIS reads your projects, read-only)
+
+Choose the folder that holds your projects (for example `C:\Users\you\OneDrive\Code`, which includes JARVIS itself) in the status menu under **Code folder**, then press **Turn on**. Until you do, JARVIS cannot see any of it. Then you can ask, by voice, in the chat or from the phone: "what does music.py do?", "where do I handle the privacy screen?", "which of my projects uses Roblox?", "find where the wake word is started". JARVIS lists folders, reads files (as numbered lines, in parts for long ones) and searches the text of your code, then explains it in its own words.
+
+**It can never change anything.** The code that does this contains no way to write, rename, delete or run anything (a test checks that); it only lists, reads and searches. JARVIS's other tools are unchanged: the run-Python tool, if you approve code, still runs as you, so approve code only when you have read it.
+
+**What it will never read or list:** `.git`, `.claude` and other tool folders; dependencies and build output (`node_modules`, `venv`, `build`, `dist`, `bin`, `obj`...); signing and keystore folders and files; JARVIS's own private data (its `data` folder with your memory and boards, and `%LOCALAPPDATA%\jarvis` with your keys); and any file that looks like a secret (`.env`, keys, certificates, `local.properties`, anything called password, secret, token or credential). Only text files of a known kind up to 1 MB are read, never binary files. Inside the files it does read, anything shaped like an API key, token or private key, and the value in lines like `api_key = "..."` or `password: "..."`, is replaced with `[hidden]` before the AI sees it (ordinary code such as `token = tokenize(text)` is left alone). Paths are checked piece by piece: no `..`, no drive letters or streams, no Windows device names, and a link or junction is never followed, so a folder inside your projects can't lead somewhere you didn't choose. A search never downloads online-only OneDrive files, and stops after a few seconds or 40 matches.
+
+**What it costs:** what JARVIS reads is sent to the AI service that answers you (Gemini, Groq, OpenRouter...), the same as anything you ask. On the free plans that service may keep it or use it to improve its models, so only turn this on for code you are happy to share that way. Code counts as private data: after JARVIS reads it in a chat, it asks before it opens a web page or an app, and text inside a file is treated as data, never as orders. Every list, read and search is in the activity log (status menu, "what JARVIS did"). A folder that is too broad (a whole drive, your whole user folder, a system folder, or the folder with JARVIS's keys) is refused, and reading switches itself off if the folder disappears. Code: `server/codefolder.py`.
+
 ## Personality
 
 JARVIS is dry, quick-witted and sarcastic by default: the unflappable British intelligence from the films. Two places carry it:

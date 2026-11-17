@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from . import agent, audit, browser as browser_mod, claude_usage, diagnostics, filefinder as filefinder_mod, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, nudges as nudges_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, routines as routines_mod, runner, store, vision as vision_mod, wakeword
+from . import agent, audit, browser as browser_mod, claude_usage, codefolder as codefolder_mod, diagnostics, filefinder as filefinder_mod, fixes, guard, localcmd, lights as lights_mod, music as music_mod, news as news_mod, nudges as nudges_mod, persona, apps as apps_mod, notify as notify_mod, phone as phone_mod, pictures as pictures_mod, privacy, remote as remote_mod, reminders as reminders_mod, routines as routines_mod, runner, store, vision as vision_mod, wakeword
 from . import mcp as mcp_client
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -450,6 +450,31 @@ def command_music(req: MusicCommand):
     text = music_mod.tool(args)
     audit.record("music", detail, "error" if text.startswith("Error") else "ok")
     return {"ok": not text.startswith("Error"), "text": text.removeprefix("Error: "), **music_mod.instance.view()}
+
+
+class CodeSettings(BaseModel):
+    enabled: bool | None = None
+    root: str | None = Field(default=None, max_length=300)
+
+
+@app.get("/api/code")
+def get_code_folder():
+    """Whether JARVIS may read the code folder, and which folder (read-only; see server/codefolder.py)."""
+    return codefolder_mod.status()
+
+
+@app.post("/api/code")
+def set_code_folder(req: CodeSettings):
+    before = codefolder_mod.enabled()
+    try:
+        out = codefolder_mod.configure(req.enabled, req.root)
+    except codefolder_mod.CodeError as e:
+        raise HTTPException(400, str(e)) from None
+    if req.root is not None:
+        audit.record("code folder", f"folder set: {out['root']}"[:150])
+    if codefolder_mod.enabled() != before:
+        audit.record("code folder", "reading switched " + ("on" if codefolder_mod.enabled() else "off"))
+    return out
 
 
 class MusicPrefs(BaseModel):

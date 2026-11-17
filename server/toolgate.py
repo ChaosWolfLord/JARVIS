@@ -46,6 +46,11 @@ GROUPS: dict[str, tuple[frozenset, re.Pattern, tuple[str, ...]]] = {
     "files": (frozenset({"find_files"}),
               re.compile(r"\b(files?|documents?|docs?|pdfs?|spreadsheets?|presentations?|slides|folders?|downloads?|find|where|locate|search|screenshots?|excel|powerpoint|invoices?|receipts?)\b"),
               ("find_files",)),
+    "codefolder": (frozenset({"code_list", "code_read", "code_search"}),
+                   re.compile(r"\b(code|codes|source|projects?|repos?|repositor\w*|function|functions|class|classes|method|methods|variable|bugs?|files?|folders?|scripts?|"
+                              r"python|javascript|java|kotlin|lua|roblox|module|modules|implement\w*|where (?:is|do|does)|how does|how do|what does|read|open|look at|"
+                              r"explain|jarvis|cauldrun|cyberpi|screencheck|wallpaper|\w+\.(?:py|js|java|kt|lua|json|html|css|md))\b"),
+                   ("code_list",)),
     "reminders": (frozenset({"reminder"}),
                   re.compile(r"\b(remind\w*|alarm|wake me|forget|tonight|tomorrow|later|every|daily|weekly|at \d|in \d+ ?(?:min|hour|day)\w*)\b"), ()),
     "code": (frozenset({"run_python"}),

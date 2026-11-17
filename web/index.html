@@ -122,6 +122,22 @@
           </div>
         </details>
 
+        <details class="sd-sec" id="sec-code">
+          <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg><span><b>Code folder</b><small>Let JARVIS read your projects (it can never change them)</small></span></summary>
+          <div class="sd-inner">
+            <p id="code-state" class="wm-hint" role="status">Checking…</p>
+            <label class="status-field">Folder with your projects <input id="code-root" type="text" placeholder="C:\Users\you\Code" autocomplete="off" aria-label="Code folder"></label>
+            <div class="status-actions">
+              <button type="button" id="code-save">Save folder</button>
+              <button type="button" id="code-suggest" hidden>Use the folder JARVIS is in</button>
+              <button type="button" id="code-toggle">Turn on</button>
+            </div>
+            <p class="wm-hint">When this is on, you can ask “what does music.py do?” or “where is the privacy screen handled?” and JARVIS lists, reads and searches the text files in that folder. It is <b>read-only</b>: it cannot change, delete or run anything there. It never reads <i>.git</i>, dependencies, build folders, JARVIS's own private data, or files that look like secrets (.env, keys, keystores, anything called password or token), and anything inside a file that looks like a key or token is hidden before it is read.</p>
+            <p class="wm-hint"><b>What it costs:</b> what JARVIS reads is sent to the AI service that answers you (Google's Gemini, Groq, OpenRouter...), the same as anything you ask. On free plans that service may keep it or use it to improve its models, so turn this on only for code you are happy to share that way. After JARVIS reads your code in a chat, it asks before opening a web page or an app. Every read is in the activity log.</p>
+            <p id="code-note" class="wm-hint" role="status"></p>
+          </div>
+        </details>
+
         <details class="sd-sec" id="sec-privacy">
           <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span><b>Privacy</b><small>Hide the screen, set an unlock code</small></span></summary>
           <div class="sd-inner">

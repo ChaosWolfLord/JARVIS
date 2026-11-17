@@ -26,6 +26,7 @@ import { Routines } from './routines.js';
 import { Vision } from './vision.js';
 import { Nudges } from './nudges.js';
 import { Boards } from './boards.js';
+import { CodeFolder } from './codefolder.js';
 import { BoardFlip } from './boardflip.js';
 import { News } from './news.js';
 import { ShowOff } from './showoff.js';
@@ -288,6 +289,7 @@ chat.onFiles = (ev) => {
 };
 const finderFolders = new FinderFolders({ root: $('status-menu') });
 const routinesUI = new Routines({ root: $("status-menu"), speak: (t) => voice.speak(t) });
+const codeUI = new CodeFolder({ root: $("status-menu") });
 const nudgesUI = new Nudges({ root: $("status-menu"), busy: () => chat.busy || voice.speaking, speak: (t) => voice.speak(t), show: (t) => showBubble(`<p><b>JARVIS</b></p><p>${plain(t)}</p>`, Math.min(40_000, 10_000 + t.length * 45)) });
 const visionUI = new Vision({ root: $("status-menu"), speak: (t) => voice.speak(t), show: (t) => showBubble(`<p>${plain(t)}</p>`, Math.min(40_000, 6000 + t.length * 45)) });
 routinesUI.refresh();
@@ -384,7 +386,7 @@ pen.onPhoneEvent = (ev) => { ambient.poke(); chat.applyRemote(ev); };
 pen.onCommand = (text) => { ambient.poke(); showoff.handleVoice(text); };
 pen.onWakeCommand = (text) => { ambient.poke(); voice.heardCommand(text); };
 const phoneLink = new PhoneLink({ root: $('status-menu'), fit: () => {} });
-status.onOpen = () => { phoneLink.refresh(); finderFolders.refresh(); routinesUI.refresh(); visionUI.cameras(); nudgesUI.refresh(); };
+status.onOpen = () => { phoneLink.refresh(); finderFolders.refresh(); routinesUI.refresh(); visionUI.cameras(); nudgesUI.refresh(); codeUI.refresh(); };
 // "Claude has finished in JARVIS": announced by the Claude Code hook (see README, "Claude Code alerts").
 pen.onNotify = (m) => {
   ambient.poke();

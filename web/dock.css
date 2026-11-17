@@ -203,3 +203,11 @@ body.touch #boards-menu .boards-anim { font-size: 17px; }
 #music .mu-fallback { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: 13px; color: var(--dim); cursor: pointer; }
 #music .mu-fallback input { width: 16px; height: 16px; accent-color: var(--cyan); }
 body.touch #music .mu-fallback { font-size: 16px; }
+
+/* text boxes inside the status panel's sections (code folder, nudges...) match the panel instead of the browser's plain white */
+#status-menu .status-field input[type="text"], #status-menu .status-field input[type="number"], #status-menu .status-field input[type="time"] {
+  min-width: 0; height: 36px; padding: 0 10px; font: inherit; font-size: 14px; color: var(--text); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); border-radius: 10px;
+}
+#status-menu .status-field input[type="text"] { flex: 1 1 100%; }
+#status-menu .status-field input:focus-visible { outline: 2px solid rgba(var(--accent-rgb), 0.7); outline-offset: 1px; }
+body.touch #status-menu .status-field input[type="text"] { height: 48px; font-size: 18px; }
